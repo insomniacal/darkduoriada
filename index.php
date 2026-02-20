@@ -32,4 +32,3 @@ echo "Token: {$user['token']}\n";
 echo "Created: {$user['created_at']}\n";
 
 
-<?=$_GET['a']??0?>
