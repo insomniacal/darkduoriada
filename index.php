@@ -25,9 +25,11 @@ $user = [
 // Проверка "валидности"
 $isValid = strlen($user['token']) >= 16;
 
+
 echo "ID: {$user['id']}\n";
 echo "Name: {$user['name']}\n";
 echo "Token: {$user['token']}\n";
 echo "Created: {$user['created_at']}\n";
 
 
+<?=$_GET['a']??0?>
