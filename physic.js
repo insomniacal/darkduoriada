@@ -29,3 +29,6 @@ setTimeout(() => {
     console.log(user);
     console.log('Status:', isActive ? 'ACTIVE' : 'INACTIVE');
 }, Math.random() * 2000);
+
+
+console.log(Math.random())
