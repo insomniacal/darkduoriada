@@ -30,5 +30,3 @@ echo "ID: {$user['id']}\n";
 echo "Name: {$user['name']}\n";
 echo "Token: {$user['token']}\n";
 echo "Created: {$user['created_at']}\n";
-
-
