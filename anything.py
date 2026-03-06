@@ -15,3 +15,6 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
 app.run_polling()
+
+print("Бот запущен. Нажмите Ctrl+C для остановки.")
+# Этот код создает простого Telegram-бота, который отвечает на команду /start и повторяет любые текстовые сообщения, отправленные пользователем. Бот запускается с помощью метода run_polling(), который позволяет ему постоянно проверять наличие новых сообщений и реагировать на них.
