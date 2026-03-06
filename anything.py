@@ -1,20 +1,18 @@
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 
-TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
-
+TOKEN = 8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o
+# команда /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет. Я работаю.")
+    await update.message.reply_text("Привет! Бот работает 🚀")
 
-async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(f"Ты написал: {update.message.text}")
-
+# создание приложения
 app = ApplicationBuilder().token(TOKEN).build()
 
+# добавляем команду
 app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
 
+print("Бот запущен...")
+
+# запуск
 app.run_polling()
-
-print("Бот запущен. Нажмите Ctrl+C для остановки.")
-# Этот код создает простого Telegram-бота, который отвечает на команду /start и повторяет любые текстовые сообщения, отправленные пользователем. Бот запускается с помощью метода run_polling(), который позволяет ему постоянно проверять наличие новых сообщений и реагировать на них.
