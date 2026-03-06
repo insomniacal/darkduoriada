@@ -1,16 +1,26 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+import os
 
 TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
 
-#/start
+# /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # клавиатура с музыкальными кнопками
+    keyboard = [
+        [InlineKeyboardButton("ВЕРГИЛИЙ И ДАНТЕ", callback_data="Casey Edwards - Bury the Light.mp3")],
+        [InlineKeyboardButton("БЛЯДСКАЯ НАТУРА", callback_data="LoToR - Блядская натура.mp3")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    # приветствие + кнопки
     await update.message.reply_text(
-        "здравствуйте, вас приветствует бот который может послать вас куда подальше а именно нахуй.\n\n"
-        "Напиши /help дабы узнать список комманд для дальнейших действий"
+        "Здравствуйте! Бот может отправлять музыку.\n\n"
+        "Напиши /help, чтобы узнать список команд.",
+        reply_markup=reply_markup
     )
 
-#/help
+# /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "Список команд:\n\n"
@@ -18,11 +28,27 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/help — показать список команд"
     )
 
+# обработка кнопок
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    file_name = query.data  # callback_data = имя файла
+    # проверка, что файл существует
+    if os.path.exists(file_name):
+        await query.message.reply_audio(open(file_name, "rb"))
+    else:
+        await query.message.reply_text(f"Файл '{file_name}' не найден!")
+
+# создание приложения
 app = ApplicationBuilder().token(TOKEN).build()
 
+# добавляем обработчики
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CallbackQueryHandler(button))
 
 print("Бот запущен...")
 
+# запуск
 app.run_polling()
