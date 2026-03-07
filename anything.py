@@ -1,63 +1,61 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import yt_dlp
 import os
 
 TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
 
 # /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [InlineKeyboardButton("ВЕРГИЛИЙ И ДАНТЕ", callback_data="Casey Edwards - Bury the Light.mp3")],
-        [InlineKeyboardButton("БЛЯДСКАЯ НАТУРА", callback_data="LoToR - Блядская натура.mp3")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
     await update.message.reply_text(
-        "Здравствуйте! Бот может отправлять музыку.\n\n"
-        "Напиши /help, чтобы узнать список команд.",
-        reply_markup=reply_markup
+        "Привет! Напиши название песни или любую фразу, "
+        "и я постараюсь найти её в интернете и отправить аудио."
     )
 
 # /help
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Список команд:\n\n"
-        "/start — запустить бота\n"
-        "/help — показать список команд"
+        "Просто напиши название песни, исполнителя или фразу из песни.\n"
+        "Бот найдет и отправит первый результат с YouTube в mp3 формате."
     )
 
-# обработка кнопок
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
+# поиск и отправка песни
+async def search_song(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.message.text.strip()
+    await update.message.reply_text(f"Ищу песню по запросу: {query}... 🎵")
 
-    file_name = query.data
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'outtmpl': 'song.%(ext)s',
+        'postprocessors': [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }],
+    }
 
-    if os.path.exists(file_name):
-        await query.message.reply_audio(open(file_name, "rb"))
-    else:
-        await query.message.reply_text(f"Файл '{file_name}' не найден!")
+    try:
+        # ytsearch: ищет видео по тексту, берёт первый результат
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch:{query}", download=True)['entries'][0]
 
-# регистрация команд (чтобы появлялись подсказки при /)
-async def set_commands(app):
-    commands = [
-        BotCommand("start", "Запустить бота"),
-        BotCommand("help", "Показать список команд"),
-    ]
-    await app.bot.set_my_commands(commands)
+        # отправка аудио пользователю
+        await update.message.reply_audio(open("song.mp3", "rb"))
 
-# создание приложения
+        # удаляем временный файл после отправки
+        os.remove("song.mp3")
+
+    except Exception as e:
+        await update.message.reply_text(f"Не удалось найти песню: {e}")
+
+# создаём приложение
 app = ApplicationBuilder().token(TOKEN).build()
 
-# добавляем обработчики
+# обработчики
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CallbackQueryHandler(button))
-
-# выполняем установку команд
-app.post_init = set_commands
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, search_song))
 
 print("Бот запущен...")
-
-# запуск
 app.run_polling()
