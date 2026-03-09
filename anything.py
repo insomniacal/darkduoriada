@@ -238,7 +238,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except asyncio.TimeoutError:
         await msg.edit_text("⏳ Сервер не ответил вовремя.\nПопробуй ещё раз через несколько секунд.")
     except Exception as e:
-        await msg.edit_text(f"❌ Ошибка: {e}")
+        await msg.edit_text(f"❌ ОшиББка: {e}")
         pid = os.getpid()
         for f in [f'song_{pid}.mp3', f'video_{pid}.mp4']:
             if os.path.exists(f):
