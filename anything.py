@@ -20,6 +20,10 @@ from telegram.ext import (
 
 TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
 
+# Все временные файлы складываем в /tmp/musicbot — не засоряем папку проекта
+TEMP_DIR = "/tmp/musicbot"
+os.makedirs(TEMP_DIR, exist_ok=True)
+
 logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     level=logging.INFO
@@ -215,12 +219,12 @@ def _shazam_identify_tiktok(tiktok_url: str) -> str | None:
     """
     import asyncio as _asyncio
     pid = os.getpid()
-    tmp_audio = f'shazam_tt_{pid}.mp3'
+    tmp_audio = os.path.join(TEMP_DIR, f'shazam_tt_{pid}.mp3')
     opts = {
         **BASE_OPTS,
         **get_cookie_opts(),
         'format': 'bestaudio/best',
-        'outtmpl': f'shazam_tt_{pid}.%(ext)s',
+        'outtmpl': os.path.join(TEMP_DIR, f'shazam_tt_{pid}.%(ext)s'),
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -261,7 +265,7 @@ def _shazam_identify_tiktok(tiktok_url: str) -> str | None:
 
 def _download_audio(query_or_url: str) -> dict | None:
     pid = os.getpid()
-    out = f'audio_{pid}'
+    out = os.path.join(TEMP_DIR, f'audio_{pid}')
     opts = {
         **BASE_OPTS,
         **get_cookie_opts(),
@@ -309,7 +313,7 @@ def _download_audio(query_or_url: str) -> dict | None:
 
 def _download_video(url: str) -> dict | None:
     pid = os.getpid()
-    out = f'video_{pid}'
+    out = os.path.join(TEMP_DIR, f'video_{pid}')
     opts = {
         **BASE_OPTS,
         **get_cookie_opts(),
@@ -575,7 +579,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         with open(result['file'], 'rb') as f:
             await update.message.reply_audio(f, title=result['title'], performer=result['uploader'])
-        save_cache(ck, result)
+        # Удаляем файл сразу после отправки
+        try: os.remove(result['file'])
+        except: pass
         try: await msg.delete()
         except: pass
     except Exception as ex:
@@ -643,7 +649,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await cb.message.reply_video(f, caption=f"🎬 <b>{result['title']}</b>", parse_mode="HTML")
 
-        save_cache(cache_key(value), result)
+        # Удаляем файл сразу после отправки
+        try: os.remove(result['file'])
+        except: pass
         try: await cb.delete_message()
         except: pass
 
@@ -676,7 +684,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not msg:
         return
 
-    vid_path = f"shazam_{update.message.message_id}.mp4"
+    vid_path = os.path.join(TEMP_DIR, f"shazam_{update.message.message_id}.mp4")
     aud_path = None
 
     try:
