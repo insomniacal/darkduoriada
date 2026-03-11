@@ -177,7 +177,7 @@ def download_audio(query_or_url: str) -> dict | None:
 def download_video(url: str) -> dict | None:
     pid = os.getpid()
     opts = {
-        **BASE_OPTS,           # ИСПРАВЛЕНО: было {BASE_OPTS, get_cookie_opts(), ...}
+        **BASE_OPTS,           # ИСПРАВЛЕНО: былo {BASE_OPTS, get_cookie_opts(), ...}
         **get_cookie_opts(),
         'format': 'bestvideo[height<=720][filesize<100M]+bestaudio/best[height<=720]/best',
         'outtmpl': f'video_{pid}.%(ext)s',
@@ -319,7 +319,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Нажми кнопку чтобы скачать:",
             parse_mode="HTML",
             reply_markup=keyboard
-        )
+                )
 
     except asyncio.TimeoutError:
         await msg.edit_text("⏳ Shazam не ответил вовремя. Попробуй ещё раз.")
@@ -518,7 +518,7 @@ app.add_handler(CommandHandler("help", help_command))
 app.add_handler(CallbackQueryHandler(handle_callback))
 
 # Текстовые сообщения
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))# Видеофайлы — для распознавания через Shazam
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message) )# Видеофайлы — для распознавания через Shazam
 app.add_handler(MessageHandler(filters.VIDEO | filters.Document.VIDEO, handle_video_file))
 
 print("Бот запущен... ✅")
