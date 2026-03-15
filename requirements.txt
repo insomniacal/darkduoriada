@@ -2,3 +2,4 @@ python-telegram-bot==20.7
 yt-dlp
 shazamio
 psycopg2-binary
+imageio-ffmpeg
