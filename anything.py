@@ -965,7 +965,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             from telegram import InputFile
             sent = await update.message.reply_audio(
                 InputFile(f, filename='audio.mp3'),
-                title=title, performer=uploader)
+                title=title, performer=uploader,
+                caption=f"🎵 <b>{title}</b>\n👤 {uploader}  •  {src_emoji(result['source'])}\n⏱ {fmt_dur(result['duration'])}",
+                parse_mode="HTML",
+                reply_markup=kb)
 
         # Сохраняем file_id для библиотеки
         if sent and sent.audio:
@@ -977,13 +980,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Удаляем временный файл
         try: os.remove(result['file'])
         except: pass
-
-        # Отправляем кнопки отдельным сообщением
-        await update.message.reply_text(
-            f"🎵 <b>{title}</b>",
-            parse_mode="HTML",
-            reply_markup=kb
-        )
 
         save_cache(ck, result)
         try: await msg.delete()
@@ -1409,7 +1405,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 from telegram import InputFile
                 sent = await cb.message.reply_audio(
                     InputFile(f, filename='audio.mp3'),
-                    title=title, performer=uploader)
+                    title=title, performer=uploader,
+                    caption=f"🎵 <b>{title}</b>\n👤 {uploader}  •  {src_emoji(result['source'])}\n⏱ {fmt_dur(result['duration'])}",
+                    parse_mode="HTML",
+                    reply_markup=kb)
 
             if sent and sent.audio:
                 _trim_state[uid] = {
@@ -1419,8 +1418,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             try: os.remove(result['file'])
             except: pass
-
-            await cb.message.reply_text(f"🎵 <b>{title}</b>", parse_mode="HTML", reply_markup=kb)
 
         else:
             cap = f"🎬 <b>{result['title']}</b>"
