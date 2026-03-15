@@ -440,8 +440,8 @@ def _get_spotify_query(url):
     try:
         with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True, 'skip_download': True}) as ydl:
             info = ydl.extract_info(url, download=False)
-            t = info.get('title', ''); a = info.get('artist') or info.get('uploader', '')
-            return f"{a} {t}".strip() or None
+            title = info.get('title', ''); artist = info.get('artist') or info.get('uploader', '')
+            return f"{artist} {title}".strip() or None
     except: return None
 
 def _get_track_meta(url):
@@ -489,8 +489,8 @@ def _shazam_identify_tiktok(tiktok_url):
         finally: loop.close()
         if not result.get('matches'): return None
         track = result.get('track', {})
-        t = track.get('title', ''); a = track.get('subtitle', '')
-        return f"{a} {t}".strip() if t else None
+        title = track.get('title', ''); artist = track.get('subtitle', '')
+        return f"{artist} {title}".strip() if title else None
     except Exception as ex: log.warning(f"_shazam_tiktok: {ex}")
     finally:
         if os.path.exists(tmp):
@@ -509,7 +509,7 @@ def _download_audio(query_or_url):
     }
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"ytsearch:{sq}", f"scsearch:{sq}"] if sq else []
+        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
     elif is_url(query_or_url): sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
@@ -519,7 +519,13 @@ def _download_audio(query_or_url):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(source, download=True)
-                    e = info['entries'][0] if 'entries' in info else info
+                    entries = info.get('entries', None)
+                    if entries is not None:
+                        entries = [e for e in entries if e]  # фильтруем None
+                        if not entries: raise Exception("empty entries")
+                        e = entries[0]
+                    else:
+                        e = info
                     file = f'{out}.mp3'
                     if os.path.exists(file):
                         return {'type': 'audio', 'title': e.get('title', query_or_url),
@@ -796,39 +802,51 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not msg: return
         resolved = await loop.run_in_executor(executor, resolve_url, text)
         tiktok_url = resolved if 'tiktok.com' in resolved else text
+
+        # Параллельно: Shazam + метаданные TikTok
         await safe_edit(msg, t(uid, 'searching_track'), parse_mode="HTML")
         try:
             shazam_q = await asyncio.wait_for(
                 loop.run_in_executor(executor, _shazam_identify_tiktok, tiktok_url), timeout=45)
         except asyncio.TimeoutError: shazam_q = None
+
+        try: meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, tiktok_url), timeout=20)
+        except: meta = None
+
         vid_key = store_url(tiktok_url)
 
-        def _build_kb(row1_buttons):
-            return InlineKeyboardMarkup([row1_buttons])
+        def _build_kb(row1_buttons, extra_rows=None):
+            rows = [row1_buttons]
+            if extra_rows:
+                rows.extend(extra_rows)
+            return InlineKeyboardMarkup(rows)
+
         if shazam_q:
             aud_key = store_url(shazam_q)
             track_line = f"\n\n🎵 <b>{shazam_q}</b>"
+            extra = []
+            # Если метаданные TikTok отличаются от Shazam — предлагаем альтернативу
+            if meta and meta.get('query') and meta['query'].lower() != shazam_q.lower():
+                alt_key = store_url(meta['query'])
+                extra.append([InlineKeyboardButton(f"🔄 {meta['artist']} — {meta['title']}", callback_data=f"audio|{alt_key}")])
+            kb = _build_kb([
+                InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"),
+                InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"),
+            ], extra)
+        elif meta and meta.get('query'):
+            aud_key = store_url(meta['query'])
+            track_line = f"\n\n🎵 <b>{meta['artist']} — {meta['title']}</b>"
             kb = _build_kb([
                 InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"),
                 InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"),
             ])
         else:
-            try: meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, tiktok_url), timeout=20)
-            except: meta = None
-            if meta and meta.get('query'):
-                aud_key = store_url(meta['query'])
-                track_line = f"\n\n🎵 <b>{meta['artist']} — {meta['title']}</b>"
-                kb = _build_kb([
-                    InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"),
-                    InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"),
-                ])
-            else:
-                track_line = ""
-                kb = _build_kb([
-                    InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{vid_key}"),
-                    InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"),
-                ])
-        await safe_edit(msg, f"📱 <b>TikTok</b>{track_line}\n\n━━━━━━━━━━━━━━━━━━━━━━\nВыбери действие:",
+            track_line = ""
+            kb = _build_kb([
+                InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{vid_key}"),
+                InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"),
+            ])
+        await safe_edit(msg, f"📱 <b>TikTok</b>{track_line}\n\n━━━━━━━━━━━━━━━━━━━━━━\n{t(uid, 'choose_action')}",
                         parse_mode="HTML", reply_markup=kb)
         return
 
@@ -1124,6 +1142,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
 
+    # ── Библиотека ────────────────────────────────────────────────────────────
     if data == "lib_back":
         await show_library(cb, uid, edit=True)
         return
@@ -1231,6 +1250,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         folder = get_stored(folder_key)
         track_meta_str = get_stored(track_key)
 
+        # Получаем file_id из trim_state
         state = _trim_state.get(uid, {})
         file_id = state.get('file_id')
 
@@ -1280,11 +1300,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         buttons = []
         lines = []
-        for i, t in enumerate(tracks, 1):
-            dur = fmt_dur(t['duration']) if t['duration'] else '?'
-            lines.append(f"{i}. <b>{t['title']}</b> — {t['uploader']} ⏱{dur}")
-            t_key = store_url(t['url'])
-            buttons.append([InlineKeyboardButton(f"⬇️ {i}. {t['title'][:30]}", callback_data=f"audio|{t_key}")])
+        for i, tr in enumerate(tracks, 1):
+            dur = fmt_dur(tr['duration']) if tr['duration'] else '?'
+            lines.append(f"{i}. <b>{tr['title']}</b> — {tr['uploader']} ⏱{dur}")
+            t_key = store_url(tr['url'])
+            buttons.append([InlineKeyboardButton(f"⬇️ {i}. {tr['title'][:30]}", callback_data=f"audio|{t_key}")])
 
         header = "🔀 <b>Похожие треки:</b>" if action == 'similar' else f"🎤 <b>Треки исполнителя:</b>"
         text = header + "\n━━━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines)
@@ -1370,6 +1390,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await cb.edit_message_text(f"❌ {ex}")
         except: pass
 
+# ── Видеофайл → выбор действия ───────────────────────────────────────────────
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.animation: return
     video = update.message.video or update.message.document
@@ -1393,6 +1414,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(msg, f"⚠️ Не удалось скачать файл.", parse_mode="HTML")
         return
 
+    # Сохраняем путь к видео в состоянии пользователя
     vid_dur = getattr(video, 'duration', 0) or 0
     _user_state[uid] = {
         'action': 'video_menu',
@@ -1417,6 +1439,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb
     )
 
+# ── Запуск ────────────────────────────────────────────────────────────────────
 async def post_init(application):
     await application.bot.set_my_commands([
         ("start",    "🎵 Начать / Start"),
