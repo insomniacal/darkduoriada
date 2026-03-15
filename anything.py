@@ -1454,6 +1454,22 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ── Запуск ────────────────────────────────────────────────────────────────────
+
+# Автоматически найти ffmpeg из imageio-ffmpeg если системный не найден
+try:
+    import imageio_ffmpeg
+    ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+    os.environ['PATH'] = os.path.dirname(ffmpeg_path) + os.pathsep + os.environ.get('PATH', '')
+    log.info(f"ffmpeg найден: {ffmpeg_path}")
+except Exception:
+    pass
+
+# Сбрасываем старую сессию при старте чтобы не было конфликта
+try:
+    import urllib.request as _ur
+    _ur.urlopen(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true", timeout=5)
+except Exception:
+    pass
 async def post_init(application):
     await application.bot.set_my_commands([
         ("start",    "🎵 Начать / Start"),
@@ -1462,7 +1478,7 @@ async def post_init(application):
         ("help",     "📖 Помощь / Help"),
     ])
 
-app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
+app = ApplicationBuilder().token(TOKEN).post_init(post_init).connect_timeout(30).read_timeout(30).write_timeout(30).build()
 app.add_handler(CommandHandler("start", cmd_start))
 app.add_handler(CommandHandler("help", cmd_help))
 app.add_handler(CommandHandler("library", cmd_library))
