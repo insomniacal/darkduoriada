@@ -434,6 +434,13 @@ BASE_OPTS = {
     'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'},
 }
 
+# Добавляем путь к ffmpeg если найден через imageio-ffmpeg
+try:
+    import imageio_ffmpeg as _iff
+    BASE_OPTS['ffmpeg_location'] = os.path.dirname(_iff.get_ffmpeg_exe())
+except Exception:
+    pass
+
 
 # ── Скачивание ────────────────────────────────────────────────────────────────
 def _get_spotify_query(url):
