@@ -536,13 +536,13 @@ def _download_audio(query_or_url):
     # Пробуем скачать сразу в mp3 через ffmpeg, если не получится — берём что есть
     opts_with_ff = {
         **BASE_OPTS, **get_cookie_opts(),
-        'format': 'bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio[ext=opus]/bestaudio/best',
+        'format': 'bestaudio/best',
         'outtmpl': f'{out}.%(ext)s',
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
     }
     opts_no_ff = {
         **BASE_OPTS, **get_cookie_opts(),
-        'format': 'bestaudio[ext=mp3]/bestaudio[ext=m4a]/bestaudio/best',
+        'format': 'bestaudio/best',
         'outtmpl': f'{out}.%(ext)s',
     }
     if is_spotify(query_or_url):
