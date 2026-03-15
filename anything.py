@@ -434,10 +434,18 @@ BASE_OPTS = {
     'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'},
 }
 
-# Добавляем путь к ffmpeg если найден через imageio-ffmpeg
+# Ищем ffmpeg: сначала imageio-ffmpeg, потом системный
 try:
     import imageio_ffmpeg as _iff
-    BASE_OPTS['ffmpeg_location'] = os.path.dirname(_iff.get_ffmpeg_exe())
+    _ffmpeg_dir = os.path.dirname(_iff.get_ffmpeg_exe())
+    # Создаём симлинк ffprobe -> ffmpeg если ffprobe не существует
+    _ffprobe = os.path.join(_ffmpeg_dir, 'ffprobe')
+    _ffmpeg_bin = _iff.get_ffmpeg_exe()
+    if not os.path.exists(_ffprobe):
+        try: os.symlink(_ffmpeg_bin, _ffprobe)
+        except: pass
+    BASE_OPTS['ffmpeg_location'] = _ffmpeg_dir
+    log.info(f"ffmpeg: {_ffmpeg_bin}")
 except Exception:
     pass
 
