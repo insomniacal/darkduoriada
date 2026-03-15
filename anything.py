@@ -581,6 +581,9 @@ def _download_audio(query_or_url):
                 err = str(ex).lower()
                 if 'empty entries' in err: break  # пробуем следующий источник
                 if ('timed out' in err or 'timeout' in err): continue
+                if 'ffprobe' in err or 'postprocessing' in err: 
+                    log.warning(f"_download_audio ffprobe error, trying without: {ex}")
+                    continue  # пробуем opts_no_ff
                 log.warning(f"_download_audio: {ex}"); break
     return None
 
