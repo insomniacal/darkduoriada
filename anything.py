@@ -529,9 +529,9 @@ def _ffmpeg_to_wav(input_file, output_file):
         return False
 
 def _shazam_identify_tiktok(tiktok_url):
-    import asyncio as _a
-    pid = os.getpid()
-    base = tmpfile(f'shazam_tt_{pid}')
+    import asyncio as _a, glob, uuid
+    uid_str = uuid.uuid4().hex[:12]
+    base = tmpfile(f'shazam_tt_{uid_str}')
     opts = {
         **BASE_OPTS, **get_cookie_opts(), 'format': 'bestaudio/best',
         'outtmpl': f'{base}.%(ext)s',
@@ -540,7 +540,6 @@ def _shazam_identify_tiktok(tiktok_url):
     wav = None
     try:
         with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(tiktok_url, download=True)
-        import glob
         files = glob.glob(f'{base}.*')
         if not files: return None
         tmp = files[0]
@@ -566,8 +565,10 @@ def _shazam_identify_tiktok(tiktok_url):
     return None
 
 def _download_audio(query_or_url):
-    pid = os.getpid()
-    out = tmpfile(f'audio_{pid}')
+    import glob, shutil, uuid
+    # Уникальный ID на каждый вызов — никаких конфликтов файлов между параллельными запросами
+    uid_str = uuid.uuid4().hex[:12]
+    out = tmpfile(f'audio_{uid_str}')
     cookie_opts = get_cookie_opts()
 
     if is_spotify(query_or_url):
@@ -580,6 +581,11 @@ def _download_audio(query_or_url):
         sources = [f"scsearch:{q}", f"ytsearch:{q}"]
 
     for source in sources:
+        # Чистим перед каждой попыткой чтобы не подобрать файл от предыдущего источника
+        for _old in glob.glob(f'{out}.*'):
+            try: os.remove(_old)
+            except: pass
+
         log.info(f"_download_audio trying: {source}")
         is_sc = source.startswith('scsearch:')
         opts = {
@@ -592,45 +598,55 @@ def _download_audio(query_or_url):
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(source, download=True)
-                if not info or not isinstance(info, dict):
-                    log.warning(f"_download_audio [{source}]: no info")
+
+            if not info or not isinstance(info, dict):
+                log.warning(f"_download_audio [{source}]: no info dict")
+                continue
+
+            entries = info.get('entries', None)
+            if entries is not None:
+                entries = [e for e in entries if e and isinstance(e, dict)]
+                if not entries:
+                    log.warning(f"_download_audio [{source}]: empty entries")
                     continue
-                entries = info.get('entries', None)
-                if entries is not None:
-                    entries = [e for e in entries if e and isinstance(e, dict)]
-                    if not entries: continue
-                    e = entries[0]
-                else:
-                    e = info
-                import glob, shutil
-                files = glob.glob(f'{out}.*')
-                if files:
-                    file = files[0]
-                    if not file.endswith('.mp3'):
-                        new_file = f'{out}.mp3'
-                        shutil.move(file, new_file)
-                        file = new_file
-                    title = e.get('title') or query_or_url
-                    uploader = e.get('uploader') or e.get('channel') or e.get('uploader_id') or ''
-                    log.info(f"_download_audio success: {title} | {uploader}")
-                    return {'type': 'audio', 'title': title,
-                            'duration': e.get('duration', 0) or 0,
-                            'uploader': uploader,
-                            'source': e.get('extractor', ''), 'file': file}
-                else:
-                    log.warning(f"_download_audio [{source}]: file not found after download")
+                e = entries[0]
+            else:
+                e = info
+
+            files = glob.glob(f'{out}.*')
+            if not files:
+                log.warning(f"_download_audio [{source}]: no file after download")
+                continue
+
+            file = files[0]
+            if not file.endswith('.mp3'):
+                new_file = f'{out}.mp3'
+                shutil.move(file, new_file)
+                file = new_file
+
+            title = e.get('title') or query_or_url
+            uploader = e.get('uploader') or e.get('channel') or e.get('uploader_id') or ''
+            log.info(f"_download_audio OK: {title} | {uploader}")
+            return {
+                'type': 'audio', 'title': title,
+                'duration': e.get('duration', 0) or 0,
+                'uploader': uploader,
+                'source': e.get('extractor', ''),
+                'file': file
+            }
+
         except Exception as ex:
             log.warning(f"_download_audio [{source}]: {ex}")
-        # Чистим битые файлы между попытками
-        import glob
-        for f in glob.glob(f'{out}.*'):
-            try: os.remove(f)
-            except: pass
+            for _old in glob.glob(f'{out}.*'):
+                try: os.remove(_old)
+                except: pass
+
     return None
 
 def _download_video(url):
-    pid = os.getpid()
-    out = tmpfile(f'video_{pid}')
+    import uuid
+    uid_str = uuid.uuid4().hex[:12]
+    out = tmpfile(f'video_{uid_str}')
     opts = {
         **BASE_OPTS, **get_cookie_opts(),
         'format': 'bestvideo[height<=720][filesize<90M]+bestaudio/best[height<=720]/best',
