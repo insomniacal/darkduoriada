@@ -559,23 +559,31 @@ def _shazam_identify_tiktok(tiktok_url):
 def _download_audio(query_or_url):
     pid = os.getpid()
     out = tmpfile(f'audio_{pid}')
-    opts = {
-        **BASE_OPTS, **get_cookie_opts(),
-        'format': 'bestaudio/best',
-        'outtmpl': f'{out}.%(ext)s',
-    }
+    cookie_opts = get_cookie_opts()
+
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"ytmsearch:{sq}", f"ytsearch:{sq}"] if sq else []
-    elif is_url(query_or_url): sources = [query_or_url]
+        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+    elif is_url(query_or_url):
+        sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
-        sources = [f"scsearch:{q}", f"ytmsearch:{q}", f"ytsearch:{q}"]
+        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
+
     for source in sources:
         log.info(f"_download_audio trying: {source}")
+        # Для SoundCloud не используем куки YouTube
+        src_cookie = cookie_opts if not source.startswith('scsearch:') else {}
+        opts = {
+            **BASE_OPTS, **src_cookie,
+            'format': 'bestaudio/best',
+            'outtmpl': f'{out}.%(ext)s',
+        }
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(source, download=True)
+                if info is None:
+                    continue
                 entries = info.get('entries', None)
                 if entries is not None:
                     entries = [e for e in entries if e]
@@ -584,19 +592,28 @@ def _download_audio(query_or_url):
                 else:
                     e = info
                 import glob, shutil
+                # Чистим старые файлы перед поиском
                 files = glob.glob(f'{out}.*')
                 if files:
                     file = files[0]
-                    # Переименовываем в .mp3 чтобы Telegram не показывал как голосовое
                     if not file.endswith('.mp3'):
                         new_file = f'{out}.mp3'
                         shutil.move(file, new_file)
                         file = new_file
-                    return {'type': 'audio', 'title': e.get('title', query_or_url),
-                            'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
+                    title = e.get('title') or query_or_url
+                    uploader = e.get('uploader') or e.get('channel') or ''
+                    log.info(f"_download_audio success: {title} | {uploader}")
+                    return {'type': 'audio', 'title': title,
+                            'duration': e.get('duration', 0) or 0,
+                            'uploader': uploader,
                             'source': e.get('extractor', ''), 'file': file}
         except Exception as ex:
-            log.warning(f"_download_audio: {ex}")
+            log.warning(f"_download_audio [{source}]: {ex}")
+            # Чистим битые файлы
+            import glob
+            for f in glob.glob(f'{out}.*'):
+                try: os.remove(f)
+                except: pass
     return None
 
 def _download_video(url):
