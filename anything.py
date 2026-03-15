@@ -450,13 +450,26 @@ def _get_track_meta(url):
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
             e = info['entries'][0] if 'entries' in info else info
-            track = e.get('track') or e.get('music_title') or e.get('music') or ''
-            artist = e.get('artist') or e.get('music_author') or e.get('creator') or e.get('uploader', '')
+            # TikTok специфичные поля — самые точные
+            music_track  = e.get('track') or e.get('music_track') or e.get('music_title') or ''
+            music_artist = e.get('artist') or e.get('music_author') or e.get('creator') or e.get('uploader', '')
             vtitle = e.get('title', '')
-            name = track or vtitle
-            if name:
-                return {'title': clean_q(name), 'artist': clean_q(artist),
-                        'query': f"{clean_q(artist)} {clean_q(name)}".strip(), 'video_title': vtitle}
+            # Если есть музыкальные метаданные — используем их
+            if music_track and music_artist and 'originalton' not in music_track.lower() and 'original sound' not in music_track.lower():
+                return {
+                    'title': clean_q(music_track),
+                    'artist': clean_q(music_artist),
+                    'query': f"{clean_q(music_artist)} {clean_q(music_track)}".strip(),
+                    'video_title': vtitle
+                }
+            # Фолбэк на заголовок видео
+            if vtitle and 'originalton' not in vtitle.lower():
+                return {
+                    'title': clean_q(vtitle),
+                    'artist': clean_q(music_artist),
+                    'query': clean_q(vtitle).strip(),
+                    'video_title': vtitle
+                }
     except Exception as ex: log.warning(f"_get_track_meta: {ex}")
     return None
 
@@ -515,6 +528,7 @@ def _download_audio(query_or_url):
         q = clean_q(query_or_url)
         sources = [f"scsearch:{q}", f"ytsearch:{q}"]
     for source in sources:
+        log.info(f"_download_audio trying: {source}")
         for attempt in range(2):
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
