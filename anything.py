@@ -1514,7 +1514,7 @@ async def post_init(application):
         ("help",     "📖 Помощь / Help"),
     ])
 
-app = ApplicationBuilder().token(TOKEN).post_init(post_init).connect_timeout(30).read_timeout(30).write_timeout(30).build()
+app = ApplicationBuilder().token(TOKEN).post_init(post_init).connect_timeout(30).read_timeout(60).write_timeout(120).build()
 app.add_handler(CommandHandler("start", cmd_start))
 app.add_handler(CommandHandler("help", cmd_help))
 app.add_handler(CommandHandler("library", cmd_library))
