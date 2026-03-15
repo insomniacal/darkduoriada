@@ -502,6 +502,23 @@ def _get_video_title(url):
             return e.get('title', '')
     except: return ''
 
+def _ffmpeg_to_wav(input_file, output_file):
+    """Конвертирует аудио в wav через ffmpeg для Shazam"""
+    try:
+        import imageio_ffmpeg as _iff
+        import subprocess
+        ffmpeg = '/tmp/ffmpeg'
+        if not os.path.exists(ffmpeg):
+            ffmpeg = _iff.get_ffmpeg_exe()
+        subprocess.run(
+            [ffmpeg, '-y', '-i', input_file, '-t', '30', '-ar', '44100', '-ac', '1', '-f', 'wav', output_file],
+            capture_output=True, timeout=30, check=False
+        )
+        return os.path.exists(output_file) and os.path.getsize(output_file) > 0
+    except Exception as ex:
+        log.warning(f"_ffmpeg_to_wav: {ex}")
+        return False
+
 def _shazam_identify_tiktok(tiktok_url):
     import asyncio as _a
     pid = os.getpid()
@@ -511,18 +528,21 @@ def _shazam_identify_tiktok(tiktok_url):
         'outtmpl': f'{base}.%(ext)s',
     }
     tmp = None
+    wav = None
     try:
         with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(tiktok_url, download=True)
-        # Находим скачанный файл
         import glob
         files = glob.glob(f'{base}.*')
         if not files: return None
         tmp = files[0]
         if not os.path.exists(tmp): return None
+        # Конвертируем в wav для надёжного распознавания Shazam
+        wav = f'{base}_shazam.wav'
+        shazam_input = wav if _ffmpeg_to_wav(tmp, wav) else tmp
         loop = _a.new_event_loop()
         try:
             shazam = Shazam()
-            result = loop.run_until_complete(shazam.recognize(tmp))
+            result = loop.run_until_complete(shazam.recognize(shazam_input))
         finally: loop.close()
         if not result.get('matches'): return None
         track = result.get('track', {})
@@ -530,9 +550,10 @@ def _shazam_identify_tiktok(tiktok_url):
         return f"{artist} {title}".strip() if title else None
     except Exception as ex: log.warning(f"_shazam_tiktok: {ex}")
     finally:
-        if tmp and os.path.exists(tmp):
-            try: os.remove(tmp)
-            except: pass
+        for _cleanup in [tmp, wav]:
+            if _cleanup and os.path.exists(_cleanup):
+                try: os.remove(_cleanup)
+                except: pass
     return None
 
 def _download_audio(query_or_url):
@@ -545,11 +566,11 @@ def _download_audio(query_or_url):
     }
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+        sources = [f"scsearch:{sq}", f"ytmsearch:{sq}", f"ytsearch:{sq}"] if sq else []
     elif is_url(query_or_url): sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
-        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
+        sources = [f"scsearch:{q}", f"ytmsearch:{q}", f"ytsearch:{q}"]
     for source in sources:
         log.info(f"_download_audio trying: {source}")
         try:
@@ -630,15 +651,15 @@ def _search_similar_tracks(query, max_results=5):
 
 def _extract_audio_for_shazam(video_path):
     out = video_path + '_shazam.mp3'
-    ret = os.system(f'ffmpeg -y -i "{video_path}" -t 30 -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
+    ret = os.system(f'/tmp/ffmpeg -y -i "{video_path}" -t 30 -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
     return out if ret == 0 and os.path.exists(out) else None
 
 def _trim_audio(src, start_sec, end_sec):
     out = src.replace('.mp3', f'_trim_{start_sec}_{end_sec or "end"}.mp3')
     if end_sec is not None:
-        cmd = f'ffmpeg -y -i "{src}" -ss {start_sec} -t {end_sec - start_sec} -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
+        cmd = f'/tmp/ffmpeg -y -i "{src}" -ss {start_sec} -t {end_sec - start_sec} -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
     else:
-        cmd = f'ffmpeg -y -i "{src}" -ss {start_sec} -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
+        cmd = f'/tmp/ffmpeg -y -i "{src}" -ss {start_sec} -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
     ret = os.system(cmd)
     return out if ret == 0 and os.path.exists(out) else None
 
@@ -1137,10 +1158,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             dur_arg = f"-t {e - s}" if e is not None else ""
             if fmt == 'audio':
                 out = tmpfile(f"trim_{uid}_{s}_{e or 'end'}.mp3")
-                cmd = f'ffmpeg -y -i "{vid_path}" -ss {s} {dur_arg} -vn -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
+                cmd = f'/tmp/ffmpeg -y -i "{vid_path}" -ss {s} {dur_arg} -vn -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
             else:
                 out = tmpfile(f"trim_{uid}_{s}_{e or 'end'}.mp4")
-                cmd = f'ffmpeg -y -i "{vid_path}" -ss {s} {dur_arg} -c:v libx264 -c:a aac -preset fast "{out}" -loglevel quiet'
+                cmd = f'/tmp/ffmpeg -y -i "{vid_path}" -ss {s} {dur_arg} -c:v libx264 -c:a aac -preset fast "{out}" -loglevel quiet'
             ret = os.system(cmd)
             return out if ret == 0 and os.path.exists(out) else None
 
