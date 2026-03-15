@@ -570,6 +570,10 @@ def _download_audio(query_or_url):
                             p = f'{base_out}.{ext}'
                             if os.path.exists(p):
                                 file = p; break
+                    # Логируем что нашли
+                    import glob
+                    found_files = glob.glob(f'{base_out}*')
+                    log.info(f"_download_audio found files: {found_files}, looking for: {file}")
                     if os.path.exists(file):
                         return {'type': 'audio', 'title': e.get('title', query_or_url),
                                 'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
