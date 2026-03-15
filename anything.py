@@ -562,10 +562,15 @@ def _download_audio(query_or_url):
                     e = entries[0]
                 else:
                     e = info
-                import glob
+                import glob, shutil
                 files = glob.glob(f'{out}.*')
                 if files:
                     file = files[0]
+                    # Переименовываем в .mp3 чтобы Telegram не показывал как голосовое
+                    if not file.endswith('.mp3'):
+                        new_file = f'{out}.mp3'
+                        shutil.move(file, new_file)
+                        file = new_file
                     return {'type': 'audio', 'title': e.get('title', query_or_url),
                             'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
                             'source': e.get('extractor', ''), 'file': file}
@@ -957,7 +962,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         sent = None
         with open(result['file'], 'rb') as f:
-            sent = await update.message.reply_audio(f, title=title, performer=uploader)
+            from telegram import InputFile
+            sent = await update.message.reply_audio(
+                InputFile(f, filename='audio.mp3'),
+                title=title, performer=uploader)
 
         # Сохраняем file_id для библиотеки
         if sent and sent.audio:
@@ -1398,7 +1406,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
             sent = None
             with open(result['file'], 'rb') as f:
-                sent = await cb.message.reply_audio(f, title=title, performer=uploader)
+                from telegram import InputFile
+                sent = await cb.message.reply_audio(
+                    InputFile(f, filename='audio.mp3'),
+                    title=title, performer=uploader)
 
             if sent and sent.audio:
                 _trim_state[uid] = {
