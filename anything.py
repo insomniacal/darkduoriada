@@ -437,17 +437,21 @@ BASE_OPTS = {
 # Ищем ffmpeg: сначала imageio-ffmpeg, потом системный
 try:
     import imageio_ffmpeg as _iff
-    _ffmpeg_dir = os.path.dirname(_iff.get_ffmpeg_exe())
-    # Создаём симлинк ffprobe -> ffmpeg если ffprobe не существует
-    _ffprobe = os.path.join(_ffmpeg_dir, 'ffprobe')
     _ffmpeg_bin = _iff.get_ffmpeg_exe()
+    _ffmpeg_dir = os.path.dirname(_ffmpeg_bin)
+    # Создаём ffprobe как копию ffmpeg если не существует
+    _ffprobe = os.path.join(_ffmpeg_dir, 'ffprobe')
     if not os.path.exists(_ffprobe):
-        try: os.symlink(_ffmpeg_bin, _ffprobe)
-        except: pass
+        import shutil
+        try:
+            shutil.copy2(_ffmpeg_bin, _ffprobe)
+            os.chmod(_ffprobe, 0o755)
+        except Exception as _e:
+            log.warning(f"ffprobe copy failed: {_e}")
     BASE_OPTS['ffmpeg_location'] = _ffmpeg_dir
-    log.info(f"ffmpeg: {_ffmpeg_bin}")
-except Exception:
-    pass
+    log.info(f"ffmpeg: {_ffmpeg_bin}, ffprobe exists: {os.path.exists(_ffprobe)}")
+except Exception as _ex:
+    log.warning(f"imageio_ffmpeg not found: {_ex}")
 
 
 # ── Скачивание ────────────────────────────────────────────────────────────────
