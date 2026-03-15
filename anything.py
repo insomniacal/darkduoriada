@@ -533,7 +533,7 @@ def _shazam_identify_tiktok(tiktok_url):
 def _download_audio(query_or_url):
     pid = os.getpid()
     out = tmpfile(f'audio_{pid}')
-    # Пробуем скачать сразу в mp3 через ffmpeg, если не получится — берём что есть
+    out2 = tmpfile(f'audio2_{pid}')
     opts_with_ff = {
         **BASE_OPTS, **get_cookie_opts(),
         'format': 'bestaudio/best',
@@ -542,8 +542,7 @@ def _download_audio(query_or_url):
     }
     opts_no_ff = {
         **BASE_OPTS, **get_cookie_opts(),
-        'format': 'bestaudio/best',
-        'outtmpl': f'{out}.%(ext)s',
+        'outtmpl': f'{out2}.%(ext)s',
     }
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
@@ -554,7 +553,7 @@ def _download_audio(query_or_url):
         sources = [f"scsearch:{q}", f"ytsearch:{q}"]
     for source in sources:
         log.info(f"_download_audio trying: {source}")
-        for opts in [opts_with_ff, opts_no_ff]:
+        for opts, base_out in [(opts_with_ff, out), (opts_no_ff, out2)]:
             try:
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(source, download=True)
@@ -565,25 +564,22 @@ def _download_audio(query_or_url):
                         e = entries[0]
                     else:
                         e = info
-                    # Ищем скачанный файл
-                    file = f'{out}.mp3'
+                    file = f'{base_out}.mp3'
                     if not os.path.exists(file):
-                        # Попробуем найти другой формат
-                        for ext in ['m4a', 'opus', 'webm', 'ogg']:
-                            if os.path.exists(f'{out}.{ext}'):
-                                file = f'{out}.{ext}'
-                                break
+                        for ext in ['m4a', 'opus', 'webm', 'ogg', 'mp3']:
+                            p = f'{base_out}.{ext}'
+                            if os.path.exists(p):
+                                file = p; break
                     if os.path.exists(file):
                         return {'type': 'audio', 'title': e.get('title', query_or_url),
                                 'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
                                 'source': e.get('extractor', ''), 'file': file}
             except Exception as ex:
                 err = str(ex).lower()
-                if 'empty entries' in err: break  # пробуем следующий источник
-                if ('timed out' in err or 'timeout' in err): continue
-                if 'ffprobe' in err or 'postprocessing' in err: 
-                    log.warning(f"_download_audio ffprobe error, trying without: {ex}")
-                    continue  # пробуем opts_no_ff
+                if 'empty entries' in err: break
+                if 'timed out' in err or 'timeout' in err: continue
+                if 'ffprobe' in err or 'postprocessing' in err:
+                    log.warning(f"_download_audio ffprobe, trying no-ff: {ex}"); continue
                 log.warning(f"_download_audio: {ex}"); break
     return None
 
