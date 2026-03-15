@@ -591,9 +591,11 @@ def _download_audio(query_or_url):
         opts = {
             **BASE_OPTS,
             **(cookie_opts if not is_sc else {}),
-            'format': 'bestaudio/best',
+            # Только аудио форматы, максимум 50MB
+            'format': 'bestaudio[filesize<50M]/bestaudio/best[filesize<50M]',
             'outtmpl': f'{out}.%(ext)s',
             'ignoreerrors': True,
+            'match_filter': yt_dlp.utils.match_filter_func('duration < 1800'),  # max 30 минут
         }
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
