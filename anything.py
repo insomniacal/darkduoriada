@@ -566,7 +566,7 @@ def _download_audio(query_or_url):
                         e = info
                     file = f'{base_out}.mp3'
                     if not os.path.exists(file):
-                        for ext in ['m4a', 'opus', 'webm', 'ogg', 'mp3']:
+                        for ext in ['m4a', 'opus', 'webm', 'ogg', 'mp4']:
                             p = f'{base_out}.{ext}'
                             if os.path.exists(p):
                                 file = p; break
