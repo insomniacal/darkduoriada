@@ -6,6 +6,118 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import BadRequest, RetryAfter, TimedOut, NetworkError
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
+# ── Переводы ──────────────────────────────────────────────────────────────────
+STRINGS = {
+    'ru': {
+        'choose_lang':        "🌐 Выбери язык / Choose language:",
+        'lang_set':           "✅ Язык установлен: <b>Русский</b>",
+        'welcome':            "🎵 <b>Добро пожаловать, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n<b>Что умею:</b>\n\n🔗 <b>Ссылка</b> — просто отправь:\n    TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n🔍 <b>Поиск музыки:</b>\n    <code>найти The Weeknd Blinding Lights</code>\n\n✂️ <b>Обрезать трек</b> (после скачивания):\n    <code>обрезать 0:30 0:45</code>\n\n📁 <b>Библиотека</b> — /library\n    Сохраняй треки в папки\n\n🎬 <b>Распознать трек</b> — пришли видео до 20MB\n\n━━━━━━━━━━━━━━━━━━━━━━\n⚡️ Повторные запросы — мгновенно",
+        'help':               "📖 <b>Инструкция</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n🔗 TikTok / Pinterest → выбери Аудио или Видео\n▶️ YouTube / SoundCloud / Spotify → mp3\n\n🔍 <code>найти [исполнитель трек]</code>\n\n✂️ После скачивания трека:\n    <code>обрезать 0:30 0:45</code> — с 30 до 45 сек\n    <code>обрезать до 1:30</code> — первые 1:30\n    <code>обрезать с 0:30</code> — с 30 сек до конца\n\n📁 /library — личная библиотека треков\n\n🎬 Пришли видеофайл до 20MB — найду трек",
+        'processing':         "⏳ <b>Обрабатываю...</b>",
+        'searching_track':    "🎵 <b>Ищу трек...</b>",
+        'choose_action':      "Выбери действие:",
+        'choose_format':      "Выбери формат:",
+        'found':              "✅ <b>Нашёл!</b>",
+        'not_found':          "😔 Ничего не найдено. Попробуй уточнить запрос.",
+        'timeout':            "⚠️ Превышено время ожидания.",
+        'sending':            "📤 Отправляю...",
+        'track_identified':   "✅ <b>Трек определён!</b>",
+        'track_not_found':    "😔 <b>Трек не распознан</b>\n\nПопробуй видео с более чёткой музыкой.",
+        'shazam_timeout':     "⚠️ Shazam не ответил.",
+        'file_too_big':       "⚠️ Файл больше 20MB.",
+        'video_received':     "🎬 <b>Видео получено</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nЧто хочешь сделать?",
+        'find_track':         "🔍 Найти трек",
+        'trim':               "✂️ Обрезать",
+        'trim_title':         "✂️ <b>Обрезка видео</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nНапиши время:\n<code>начало конец</code>\n\nПримеры:\n  <code>0:05 0:10</code> — с 5 по 10 сек\n  <code>5 10</code> — то же самое",
+        'trim_confirm':       "✂️ <b>Обрежу:</b> {s} → {e}\n\nВ каком формате отправить?",
+        'as_audio':           "🎵 Как аудио (mp3)",
+        'as_video':           "🎬 Как видео (mp4)",
+        'back':               "◀️ Назад",
+        'change':             "◀️ Изменить",
+        'trim_done':          "✅ <b>Готово!</b>  ✂️ {s} → {e}\n📤 Отправляю...",
+        'trim_error':         "⚠️ Не удалось обрезать. Убедись что ffmpeg установлен.",
+        'file_not_found':     "❌ Файл не найден, пришли видео заново",
+        'trim_bad_format':    "❌ Неверный формат.\n\nПример: <code>0:05 0:10</code> или <code>5 10</code>",
+        'trim_bad_time':      "❌ Конец должен быть больше начала.",
+        'trim_bad_time2':     "❌ Неверный формат времени. Пример: <code>0:05 0:10</code>",
+        'lib_title':          "🎵 <b>Моя библиотека</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n",
+        'lib_folders':        "📂 Папок: <b>{n}</b>\n\nВыбери папку:",
+        'lib_empty':          "Библиотека пуста.\nСоздай папку и добавляй треки!",
+        'lib_new_folder':     "➕ Создать папку",
+        'lib_folder_empty':   "Папка пустая.\n\nПосле скачивания трека нажми кнопку\n<b>📁 Сохранить в библиотеку</b>",
+        'lib_tracks':         "Треков: <b>{n}</b>\n\nНажми на трек — отправлю:",
+        'lib_del_folder':     "🗑 Удалить папку",
+        'lib_save_btn':       "📁 Сохранить в библиотеку",
+        'lib_saved':          "✅ Сохранено в <b>{folder}</b>",
+        'lib_duplicate':      "⚠️ Этот трек уже есть в папке.",
+        'lib_no_folders':     "❌ Нет папок. Сначала создай папку в /library",
+        'lib_ask_folder':     "📁 В какую папку сохранить?",
+        'lib_ask_name':       "📁 Напиши название новой папки:",
+        'lib_created':        "✅ Папка <b>«{name}»</b> создана!\n\nТеперь скачай трек и нажми <b>📁 Сохранить в библиотеку</b>",
+        'lib_name_too_long':  "❌ Название слишком длинное (макс. 50 символов).",
+        'search_prefix':      'найти ',
+        'trim_prefix':        'обрезать ',
+        'similar':            "🔀 Похожие",
+        'by_artist':          "🎤 Ещё от исполнителя",
+        'download_full':      "⬇️ Скачать полную версию",
+        'language_cmd':       "🌐 Выбери язык:",
+    },
+    'en': {
+        'choose_lang':        "🌐 Choose language / Выбери язык:",
+        'lang_set':           "✅ Language set: <b>English</b>",
+        'welcome':            "🎵 <b>Welcome, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n<b>What I can do:</b>\n\n🔗 <b>Link</b> — just send:\n    TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n🔍 <b>Search music:</b>\n    <code>find The Weeknd Blinding Lights</code>\n\n✂️ <b>Trim track</b> (after download):\n    <code>trim 0:30 0:45</code>\n\n📁 <b>Library</b> — /library\n    Save tracks to folders\n\n🎬 <b>Identify track</b> — send video up to 20MB\n\n━━━━━━━━━━━━━━━━━━━━━━\n⚡️ Repeated requests — instant",
+        'help':               "📖 <b>Instructions</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n🔗 TikTok / Pinterest → choose Audio or Video\n▶️ YouTube / SoundCloud / Spotify → mp3\n\n🔍 <code>find [artist track]</code>\n\n✂️ After downloading:\n    <code>trim 0:30 0:45</code> — from 30 to 45 sec\n    <code>trim to 1:30</code> — first 1:30\n    <code>trim from 0:30</code> — from 30 sec to end\n\n📁 /library — personal track library\n\n🎬 Send video up to 20MB — I'll find the track",
+        'processing':         "⏳ <b>Processing...</b>",
+        'searching_track':    "🎵 <b>Searching track...</b>",
+        'choose_action':      "Choose action:",
+        'choose_format':      "Choose format:",
+        'found':              "✅ <b>Found!</b>",
+        'not_found':          "😔 Nothing found. Try a more specific query.",
+        'timeout':            "⚠️ Request timed out.",
+        'sending':            "📤 Sending...",
+        'track_identified':   "✅ <b>Track identified!</b>",
+        'track_not_found':    "😔 <b>Track not recognized</b>\n\nTry a video with clearer music.",
+        'shazam_timeout':     "⚠️ Recognition timed out.",
+        'file_too_big':       "⚠️ File is larger than 20MB.",
+        'video_received':     "🎬 <b>Video received</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nWhat do you want to do?",
+        'find_track':         "🔍 Find track",
+        'trim':               "✂️ Trim",
+        'trim_title':         "✂️ <b>Trim video</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nWrite time:\n<code>start end</code>\n\nExamples:\n  <code>0:05 0:10</code> — from 5 to 10 sec\n  <code>5 10</code> — same thing",
+        'trim_confirm':       "✂️ <b>Will trim:</b> {s} → {e}\n\nWhat format to send?",
+        'as_audio':           "🎵 As audio (mp3)",
+        'as_video':           "🎬 As video (mp4)",
+        'back':               "◀️ Back",
+        'change':             "◀️ Change",
+        'trim_done':          "✅ <b>Done!</b>  ✂️ {s} → {e}\n📤 Sending...",
+        'trim_error':         "⚠️ Failed to trim. Make sure ffmpeg is installed.",
+        'file_not_found':     "❌ File not found, send video again",
+        'trim_bad_format':    "❌ Wrong format.\n\nExample: <code>0:05 0:10</code> or <code>5 10</code>",
+        'trim_bad_time':      "❌ End must be greater than start.",
+        'trim_bad_time2':     "❌ Wrong time format. Example: <code>0:05 0:10</code>",
+        'lib_title':          "🎵 <b>My library</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n",
+        'lib_folders':        "📂 Folders: <b>{n}</b>\n\nChoose a folder:",
+        'lib_empty':          "Library is empty.\nCreate a folder and add tracks!",
+        'lib_new_folder':     "➕ Create folder",
+        'lib_folder_empty':   "Folder is empty.\n\nAfter downloading a track press\n<b>📁 Save to library</b>",
+        'lib_tracks':         "Tracks: <b>{n}</b>\n\nTap a track — I'll send it:",
+        'lib_del_folder':     "🗑 Delete folder",
+        'lib_save_btn':       "📁 Save to library",
+        'lib_saved':          "✅ Saved to <b>{folder}</b>",
+        'lib_duplicate':      "⚠️ This track is already in the folder.",
+        'lib_no_folders':     "❌ No folders. Create one in /library first",
+        'lib_ask_folder':     "📁 Which folder to save to?",
+        'lib_ask_name':       "📁 Write a name for the new folder:",
+        'lib_created':        "✅ Folder <b>«{name}»</b> created!\n\nNow download a track and press <b>📁 Save to library</b>",
+        'lib_name_too_long':  "❌ Name is too long (max 50 characters).",
+        'search_prefix':      'find ',
+        'trim_prefix':        'trim ',
+        'similar':            "🔀 Similar",
+        'by_artist':          "🎤 More by artist",
+        'download_full':      "⬇️ Download full version",
+        'language_cmd':       "🌐 Choose language:",
+    }
+}
+
 # ── Настройки ─────────────────────────────────────────────────────────────────
 TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
 
@@ -122,8 +234,46 @@ def _db():
             UNIQUE(folder_id, file_id)
         )
     """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            uid BIGINT PRIMARY KEY,
+            lang TEXT NOT NULL DEFAULT 'ru'
+        )
+    """)
     con.commit()
     return con
+
+# Кэш языков чтобы не дёргать БД на каждое сообщение
+_lang_cache: dict = {}
+
+def get_lang(uid: int) -> str:
+    if uid in _lang_cache: return _lang_cache[uid]
+    try:
+        con = _db()
+        cur = con.cursor()
+        cur.execute("SELECT lang FROM users WHERE uid=%s", (uid,))
+        row = cur.fetchone()
+        con.close()
+        lang = row[0] if row else 'ru'
+        _lang_cache[uid] = lang
+        return lang
+    except: return 'ru'
+
+def set_lang(uid: int, lang: str):
+    _lang_cache[uid] = lang
+    try:
+        con = _db()
+        cur = con.cursor()
+        cur.execute("INSERT INTO users (uid, lang) VALUES (%s,%s) ON CONFLICT (uid) DO UPDATE SET lang=%s", (uid, lang, lang))
+        con.commit()
+        con.close()
+    except: pass
+
+def t(uid: int, key: str, **kwargs) -> str:
+    """Получить перевод строки для пользователя."""
+    lang = get_lang(uid)
+    s = STRINGS.get(lang, STRINGS['ru']).get(key, STRINGS['ru'].get(key, key))
+    return s.format(**kwargs) if kwargs else s
 
 def lib_get_user(uid: int) -> dict:
     con = _db()
@@ -213,16 +363,13 @@ async def show_library(update_or_query, uid: int, edit=False):
     else:
         pass  # покажем пустое состояние
 
-    buttons.append([InlineKeyboardButton("➕ Создать папку", callback_data="lib_new_folder")])
+    buttons.append([InlineKeyboardButton(t(uid, 'lib_new_folder'), callback_data="lib_new_folder")])
 
-    text = (
-        "🎵 <b>Моя библиотека</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    )
+    text = t(uid, 'lib_title')
     if folders:
-        text += f"📂 Папок: <b>{len(folders)}</b>\n\nВыбери папку:"
+        text += t(uid, 'lib_folders', n=len(folders))
     else:
-        text += "Библиотека пуста.\nСоздай папку и добавляй треки!"
+        text += t(uid, 'lib_empty')
 
     kb = InlineKeyboardMarkup(buttons)
 
@@ -241,27 +388,24 @@ async def show_folder(query, uid: int, folder: str):
     tracks = folders.get(folder, [])
     buttons = []
 
-    for i, t in enumerate(tracks):
-        dur = fmt_dur(t.get('duration', 0))
-        label = f"🎵 {t['title'][:28]}  {dur}"
+    for i, tr in enumerate(tracks):
+        dur = fmt_dur(tr.get('duration', 0))
+        label = f"🎵 {tr['title'][:28]}  {dur}"
         buttons.append([
             InlineKeyboardButton(label, callback_data=f"lib_play|{store_url(folder)}|{i}"),
             InlineKeyboardButton("🗑", callback_data=f"lib_del_track|{store_url(folder)}|{i}"),
         ])
 
     buttons.append([
-        InlineKeyboardButton("🗑 Удалить папку", callback_data=f"lib_del_folder|{store_url(folder)}"),
-        InlineKeyboardButton("◀️ Назад", callback_data="lib_back"),
+        InlineKeyboardButton(t(uid, 'lib_del_folder'), callback_data=f"lib_del_folder|{store_url(folder)}"),
+        InlineKeyboardButton(t(uid, 'back'), callback_data="lib_back"),
     ])
 
-    text = (
-        f"📁 <b>{folder}</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    )
+    text = f"📁 <b>{folder}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
     if tracks:
-        text += f"Треков: <b>{len(tracks)}</b>\n\nНажми на трек — отправлю:"
+        text += t(uid, 'lib_tracks', n=len(tracks))
     else:
-        text += "Папка пустая.\n\nПосле скачивания трека нажми кнопку\n<b>📁 Сохранить в библиотеку</b>"
+        text += t(uid, 'lib_folder_empty')
 
     try:
         await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
@@ -482,41 +626,40 @@ async def _send_cached(update, cached):
 # ── Вспомогательные функции отправки ──────────────────────────────────────────
 # ── Команды ───────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    name = update.effective_user.first_name or "друг"
-    await update.message.reply_text(
-        f"🎵 <b>Добро пожаловать, {name}!</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"<b>Что умею:</b>\n\n"
-        f"🔗 <b>Ссылка</b> — просто отправь:\n"
-        f"    TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-        f"🔍 <b>Поиск музыки:</b>\n"
-        f"    <code>найти The Weeknd Blinding Lights</code>\n\n"
-        f"✂️ <b>Обрезать трек</b> (после скачивания):\n"
-        f"    <code>обрезать 0:30 0:45</code>\n\n"
-        f"📁 <b>Библиотека</b> — /library\n"
-        f"    Сохраняй треки в папки\n\n"
-        f"🎬 <b>Распознать трек</b> — пришли видео до 20MB\n\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"⚡️ Повторные запросы — мгновенно",
-        parse_mode="HTML"
-    )
+    uid = update.effective_user.id
+    name = update.effective_user.first_name or "friend"
+    # Если язык ещё не выбран — показываем выбор
+    lang = get_lang(uid)
+    if not _lang_cache.get(uid) and lang == 'ru':
+        # Проверяем есть ли запись в БД
+        try:
+            con = _db()
+            cur = con.cursor()
+            cur.execute("SELECT lang FROM users WHERE uid=%s", (uid,))
+            row = cur.fetchone()
+            con.close()
+            if not row:
+                # Первый раз — показываем выбор языка
+                kb = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🇷🇺 Русский", callback_data="setlang|ru"),
+                    InlineKeyboardButton("🇬🇧 English", callback_data="setlang|en"),
+                ]])
+                await update.message.reply_text(STRINGS['ru']['choose_lang'], reply_markup=kb)
+                return
+        except: pass
+    await update.message.reply_text(t(uid, 'welcome', name=name), parse_mode="HTML")
+
+async def cmd_language(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🇷🇺 Русский", callback_data="setlang|ru"),
+        InlineKeyboardButton("🇬🇧 English", callback_data="setlang|en"),
+    ]])
+    await update.message.reply_text(t(uid, 'language_cmd'), reply_markup=kb)
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📖 <b>Инструкция</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🔗 TikTok / Pinterest → выбери Аудио или Видео\n"
-        "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-        "🔍 <code>найти [исполнитель трек]</code>\n\n"
-        "✂️ После скачивания трека:\n"
-        "    <code>обрезать 0:30 0:45</code> — с 30 до 45 сек\n"
-        "    <code>обрезать до 1:30</code> — первые 1:30\n"
-        "    <code>обрезать с 0:30</code> — с 30 сек до конца\n\n"
-        "📁 /library — личная библиотека треков\n"
-        "    После скачивания нажми 📁 Сохранить в библиотеку\n\n"
-        "🎬 Пришли видеофайл до 20MB — найду трек",
-        parse_mode="HTML"
-    )
+    uid = update.effective_user.id
+    await update.message.reply_text(t(uid, 'help'), parse_mode="HTML")
 
 async def cmd_library(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -534,14 +677,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state.get('action') == 'create_folder':
         folder_name = text.strip()
         if len(folder_name) > 50:
-            await safe_reply(update, "❌ Название слишком длинное (макс. 50 символов).", parse_mode="HTML")
+            await safe_reply(update, t(uid, 'lib_name_too_long'), parse_mode="HTML")
             return
         lib_create_folder(uid, folder_name)
         _user_state.pop(uid, None)
-        await safe_reply(update,
-            f"✅ Папка <b>«{folder_name}»</b> создана!\n\n"
-            f"Теперь скачай трек и нажми <b>📁 Сохранить в библиотеку</b>",
-            parse_mode="HTML")
+        await safe_reply(update, t(uid, 'lib_created', name=folder_name), parse_mode="HTML")
         await show_library(update, uid)
         return
 
@@ -584,10 +724,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         kb = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🎵 Как аудио (mp3)", callback_data=f"vid_trim_fmt|{vid_key}|{start_key}|{end_key}|audio"),
-                InlineKeyboardButton("🎬 Как видео (mp4)", callback_data=f"vid_trim_fmt|{vid_key}|{start_key}|{end_key}|video"),
+                InlineKeyboardButton(t(uid, 'as_audio'), callback_data=f"vid_trim_fmt|{vid_key}|{start_key}|{end_key}|audio"),
+                InlineKeyboardButton(t(uid, 'as_video'), callback_data=f"vid_trim_fmt|{vid_key}|{start_key}|{end_key}|video"),
             ],
-            [InlineKeyboardButton("◀️ Изменить", callback_data=f"vid_trim|{vid_key}")]
+            [InlineKeyboardButton(t(uid, 'change'), callback_data=f"vid_trim|{vid_key}")]
         ])
 
         await safe_reply(
@@ -602,40 +742,40 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
     # ── Обрезка ───────────────────────────────────────────────────────────────
-    m_range = re.match(r'^обрезать\s+(\S+)\s+(\S+)\s*$', lower)
-    m_to    = re.match(r'^обрезать\s+до\s+(\S+)\s*$', lower)
-    m_from  = re.match(r'^обрезать\s+с\s+(\S+)\s*$', lower)
+    m_range = re.match(r'^(обрезать|trim)\s+(\S+)\s+(\S+)\s*$', lower)
+    m_to    = re.match(r'^(обрезать\s+до|trim\s+to)\s+(\S+)\s*$', lower)
+    m_from  = re.match(r'^(обрезать\s+с|trim\s+from)\s+(\S+)\s*$', lower)
 
     if m_range or m_to or m_from:
         state = _trim_state.get(uid)
         if not state or not os.path.exists(state.get('file', '')):
             await safe_reply(update,
-                "⚠️ Нет трека для обрезки.\nСначала скачай музыку, потом напиши:\n"
-                "<code>обрезать 0:30 0:45</code>", parse_mode="HTML")
+                "⚠️ No track to trim.\nDownload music first, then write:\n"
+                "<code>trim 0:30 0:45</code>  /  <code>обрезать 0:30 0:45</code>", parse_mode="HTML")
             return
         if m_range:
-            start_sec = parse_time(m_range.group(1))
-            end_sec   = parse_time(m_range.group(2))
+            start_sec = parse_time(m_range.group(2))
+            end_sec   = parse_time(m_range.group(3))
         elif m_to:
             start_sec = 0
-            end_sec   = parse_time(m_to.group(1))
+            end_sec   = parse_time(m_to.group(2))
         else:
-            start_sec = parse_time(m_from.group(1))
+            start_sec = parse_time(m_from.group(2))
             end_sec   = None
         if start_sec is None:
-            await safe_reply(update, "❌ Неверный формат. Пример: <code>обрезать 0:30 0:45</code>", parse_mode="HTML")
+            await safe_reply(update, t(uid, 'trim_bad_format'), parse_mode="HTML")
             return
         if end_sec is not None and end_sec <= start_sec:
-            await safe_reply(update, "❌ Конец должен быть больше начала.", parse_mode="HTML")
+            await safe_reply(update, t(uid, 'trim_bad_time'), parse_mode="HTML")
             return
         msg = await safe_reply(update, "✂️ <b>Обрезаю...</b>", parse_mode="HTML")
         trimmed = await loop.run_in_executor(executor, _trim_audio, state['file'], start_sec, end_sec)
         if not trimmed:
-            await safe_edit(msg, "❌ Не удалось обрезать. Убедись что ffmpeg установлен.", parse_mode="HTML")
+            await safe_edit(msg, t(uid, 'trim_error'), parse_mode="HTML")
             return
         s_fmt = fmt_dur(start_sec)
-        e_fmt = fmt_dur(end_sec) if end_sec else "конец"
-        await safe_edit(msg, f"✅ Готово! ⏱ {s_fmt} → {e_fmt}\n📤 Отправляю...", parse_mode="HTML")
+        e_fmt = fmt_dur(end_sec) if end_sec else ("конец" if get_lang(uid) == 'ru' else "end")
+        await safe_edit(msg, t(uid, 'trim_done', s=s_fmt, e=e_fmt), parse_mode="HTML")
         with open(trimmed, 'rb') as f:
             await update.message.reply_audio(f, title=f"{state['title']} [{s_fmt}-{e_fmt}]",
                                               performer=state.get('uploader', ''))
@@ -647,16 +787,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Музыка ────────────────────────────────────────────────────────────────
     url_match = is_url(text)
-    search_match = lower.startswith("найти ")
+    search_match = lower.startswith("найти ") or lower.startswith("find ")
     if not url_match and not search_match: return
 
     # ── TikTok ────────────────────────────────────────────────────────────────
     if url_match and is_tiktok(text):
-        msg = await safe_reply(update, "⏳ <b>Обрабатываю...</b>", parse_mode="HTML")
+        msg = await safe_reply(update, t(uid, 'processing'), parse_mode="HTML")
         if not msg: return
         resolved = await loop.run_in_executor(executor, resolve_url, text)
         tiktok_url = resolved if 'tiktok.com' in resolved else text
-        await safe_edit(msg, "🎵 <b>Ищу трек...</b>", parse_mode="HTML")
+        await safe_edit(msg, t(uid, 'searching_track'), parse_mode="HTML")
         try:
             shazam_q = await asyncio.wait_for(
                 loop.run_in_executor(executor, _shazam_identify_tiktok, tiktok_url), timeout=45)
@@ -664,7 +804,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vid_key = store_url(tiktok_url)
 
         def _build_kb(row1_buttons):
-            rows = [row1_buttons]
+            return InlineKeyboardMarkup([row1_buttons])
         if shazam_q:
             aud_key = store_url(shazam_q)
             track_line = f"\n\n🎵 <b>{shazam_q}</b>"
@@ -694,7 +834,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Pinterest ─────────────────────────────────────────────────────────────
     if url_match and is_pinterest(text):
-        msg = await safe_reply(update, "⏳ <b>Обрабатываю...</b>", parse_mode="HTML")
+        msg = await safe_reply(update, t(uid, 'processing'), parse_mode="HTML")
         if not msg: return
         try: meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, text), timeout=30)
         except: meta = None
@@ -709,7 +849,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── YouTube / SoundCloud / Spotify / поиск ────────────────────────────────
-    query = text if url_match else text[6:].strip()
+    if search_match:
+        if lower.startswith("найти "):
+            query = text[6:].strip()
+        else:
+            query = text[5:].strip()  # "find "
+    else:
+        query = text
     ck = cache_key(query)
     if ck in cache:
         if await _send_cached(update, cache[ck]): return
@@ -723,10 +869,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = await asyncio.wait_for(
             loop.run_in_executor(executor, _download_audio, query), timeout=90)
     except asyncio.TimeoutError:
-        await safe_edit(msg, "⚠️ Превышено время ожидания.", parse_mode="HTML"); return
+        await safe_edit(msg, t(uid, 'timeout'), parse_mode="HTML"); return
 
     if not result or not os.path.exists(result.get('file', '')):
-        await safe_edit(msg, "😔 Ничего не найдено. Попробуй уточнить запрос.", parse_mode="HTML"); return
+        await safe_edit(msg, t(uid, 'not_found'), parse_mode="HTML"); return
 
     try:
         title = result['title']
@@ -737,10 +883,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                           'duration': result['duration']}, ensure_ascii=False))
         rows = [
             [
-                InlineKeyboardButton("🔀 Похожие", callback_data=f"similar|{similar_key}"),
-                InlineKeyboardButton("🎤 Ещё от исполнителя", callback_data=f"artist|{artist_key}"),
+                InlineKeyboardButton(t(uid, 'similar'), callback_data=f"similar|{similar_key}"),
+                InlineKeyboardButton(t(uid, 'by_artist'), callback_data=f"artist|{artist_key}"),
             ],
-            [InlineKeyboardButton("📁 Сохранить в библиотеку", callback_data=f"lib_save|{save_key}")],
+            [InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")],
         ]
         kb = InlineKeyboardMarkup(rows)
 
@@ -794,14 +940,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = cb.data
     loop = asyncio.get_event_loop()
 
-    # ── Shazam из видео ───────────────────────────────────────────────────────
+    # ── Выбор языка ───────────────────────────────────────────────────────────
+    if data.startswith("setlang|"):
+        lang = data.split("|", 1)[1]
+        set_lang(uid, lang)
+        name = cb.from_user.first_name or "friend"
+        try: await cb.delete_message()
+        except: pass
+        await cb.message.reply_text(t(uid, 'lang_set'), parse_mode="HTML")
+        await cb.message.reply_text(t(uid, 'welcome', name=name), parse_mode="HTML")
+        return
     if data.startswith("vid_shazam|"):
         vid_path = get_stored(data.split("|", 1)[1])
         if not os.path.exists(vid_path):
-            await cb.answer("❌ Файл не найден, пришли видео заново", show_alert=True)
+            await cb.answer(t(uid, 'file_not_found'), show_alert=True)
             return
         try:
-            await cb.edit_message_text("🎵 <b>Ищу трек...</b>", parse_mode="HTML")
+            await cb.edit_message_text(t(uid, 'searching_track'), parse_mode="HTML")
         except: pass
 
         loop = asyncio.get_event_loop()
@@ -827,13 +982,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _user_state.pop(uid, None)
 
         if not track:
-            try: await cb.edit_message_text("😔 <b>Трек не распознан</b>\n\nПопробуй видео с более чёткой музыкой.", parse_mode="HTML")
+            try: await cb.edit_message_text(t(uid, 'track_not_found'), parse_mode="HTML")
             except: pass
             return
 
         q_key = store_url(track['query'])
         kb = InlineKeyboardMarkup([[
-            InlineKeyboardButton("⬇️ Скачать полную версию", callback_data=f"audio|{q_key}")
+            InlineKeyboardButton(t(uid, 'download_full'), callback_data=f"audio|{q_key}")
         ]])
         try:
             await cb.edit_message_text(
@@ -849,7 +1004,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data.startswith("vid_trim|"):
         vid_path = get_stored(data.split("|", 1)[1])
         if not os.path.exists(vid_path):
-            await cb.answer("❌ Файл не найден, пришли видео заново", show_alert=True)
+            await cb.answer(t(uid, 'file_not_found'), show_alert=True)
             return
 
         state = _user_state.get(uid, {})
@@ -875,7 +1030,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"Или просто <code>0 конец</code> — всё видео целиком",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("◀️ Назад", callback_data=f"vid_back|{store_url(vid_path)}")
+                    InlineKeyboardButton(t(uid, 'back'), callback_data=f"vid_back|{store_url(vid_path)}")
                 ]])
             )
         except: pass
@@ -894,8 +1049,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"━━━━━━━━━━━━━━━━━━━━━━\n\nЧто хочешь сделать?",
                 parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔍 Найти трек", callback_data=f"vid_shazam|{vid_key}"),
-                    InlineKeyboardButton("✂️ Обрезать", callback_data=f"vid_trim|{vid_key}"),
+                    InlineKeyboardButton(t(uid, 'find_track'), callback_data=f"vid_shazam|{vid_key}"),
+                    InlineKeyboardButton(t(uid, 'trim'), callback_data=f"vid_trim|{vid_key}"),
                 ]])
             )
         except: pass
@@ -940,7 +1095,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _user_state.pop(uid, None)
 
         if not out_path:
-            try: await cb.edit_message_text("⚠️ Не удалось обрезать. Убедись что ffmpeg установлен.", parse_mode="HTML")
+            try: await cb.edit_message_text(t(uid, 'trim_error'), parse_mode="HTML")
             except: pass
             return
 
@@ -969,7 +1124,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
 
-    # ── Библиотека ────────────────────────────────────────────────────────────
     if data == "lib_back":
         await show_library(cb, uid, edit=True)
         return
@@ -1077,7 +1231,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         folder = get_stored(folder_key)
         track_meta_str = get_stored(track_key)
 
-        # Получаем file_id из trim_state
         state = _trim_state.get(uid, {})
         file_id = state.get('file_id')
 
@@ -1149,15 +1302,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if action == 'video':
             result = await asyncio.wait_for(
                 loop.run_in_executor(executor, _download_video, value), timeout=120)
-            if result:
-                vtitle = result.get('title', '')
-                if vtitle:
-                    if tmdb_r: result['tmdb'] = tmdb_r
         else:
             result = await asyncio.wait_for(
                 loop.run_in_executor(executor, _download_audio, value), timeout=90)
     except asyncio.TimeoutError:
-        try: await cb.edit_message_text("⚠️ Превышено время ожидания.", parse_mode="HTML")
+        try: await cb.edit_message_text(t(uid, 'timeout'), parse_mode="HTML")
         except: pass
         return
 
@@ -1186,10 +1335,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                                               'duration': result['duration']}, ensure_ascii=False))
             kb = InlineKeyboardMarkup([
                 [
-                    InlineKeyboardButton("🔀 Похожие", callback_data=f"similar|{similar_key}"),
-                    InlineKeyboardButton("🎤 Ещё от исполнителя", callback_data=f"artist|{artist_key}"),
+                    InlineKeyboardButton(t(uid, 'similar'), callback_data=f"similar|{similar_key}"),
+                    InlineKeyboardButton(t(uid, 'by_artist'), callback_data=f"artist|{artist_key}"),
                 ],
-                [InlineKeyboardButton("📁 Сохранить в библиотеку", callback_data=f"lib_save|{save_key}")],
+                [InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")],
             ])
             sent = None
             with open(result['file'], 'rb') as f:
@@ -1221,7 +1370,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await cb.edit_message_text(f"❌ {ex}")
         except: pass
 
-# ── Видеофайл → выбор действия ───────────────────────────────────────────────
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.animation: return
     video = update.message.video or update.message.document
@@ -1229,7 +1377,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dur = getattr(video, 'duration', None)
     if dur is not None and dur == 0: return
     if video.file_size and video.file_size > 20 * 1024 * 1024:
-        await update.message.reply_text("⚠️ Файл больше 20MB."); return
+        await update.message.reply_text(t(uid, 'file_too_big')); return
 
     uid = update.effective_user.id
     msg = await safe_reply(update, "⏳ <b>Получаю файл...</b>", parse_mode="HTML")
@@ -1245,7 +1393,6 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(msg, f"⚠️ Не удалось скачать файл.", parse_mode="HTML")
         return
 
-    # Сохраняем путь к видео в состоянии пользователя
     vid_dur = getattr(video, 'duration', 0) or 0
     _user_state[uid] = {
         'action': 'video_menu',
@@ -1257,8 +1404,8 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     dur_str = fmt_dur(vid_dur) if vid_dur else "?"
 
     kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton("🔍 Найти трек", callback_data=f"vid_shazam|{vid_key}"),
-        InlineKeyboardButton("✂️ Обрезать", callback_data=f"vid_trim|{vid_key}"),
+        InlineKeyboardButton(t(uid, 'find_track'), callback_data=f"vid_shazam|{vid_key}"),
+        InlineKeyboardButton(t(uid, 'trim'), callback_data=f"vid_trim|{vid_key}"),
     ]])
 
     await safe_edit(
@@ -1270,11 +1417,19 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb
     )
 
-# ── Запуск ────────────────────────────────────────────────────────────────────
-app = ApplicationBuilder().token(TOKEN).build()
+async def post_init(application):
+    await application.bot.set_my_commands([
+        ("start",    "🎵 Начать / Start"),
+        ("library",  "📁 Библиотека / Library"),
+        ("language", "🌐 Язык / Language"),
+        ("help",     "📖 Помощь / Help"),
+    ])
+
+app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
 app.add_handler(CommandHandler("start", cmd_start))
 app.add_handler(CommandHandler("help", cmd_help))
 app.add_handler(CommandHandler("library", cmd_library))
+app.add_handler(CommandHandler("language", cmd_language))
 app.add_handler(CallbackQueryHandler(handle_callback))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(MessageHandler((filters.VIDEO | filters.Document.VIDEO) & ~filters.ANIMATION, handle_video_file))
