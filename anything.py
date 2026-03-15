@@ -153,7 +153,11 @@ def store_url(v):
     return k
 
 def get_stored(k): return _url_store.get(k, k)
-def get_cookie_opts(): return {'cookiefile': 'cookies.txt'} if os.path.exists('cookies.txt') else {}
+def get_cookie_opts():
+    for path in ['cookies.txt', '/app/cookies.txt', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')]:
+        if os.path.exists(path):
+            return {'cookiefile': path}
+    return {}
 
 def fmt_dur(s):
     s = int(s or 0)
@@ -434,6 +438,11 @@ BASE_OPTS = {
     'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'},
 }
 
+# Логируем где нашли куки
+_cookie_paths = ['cookies.txt', '/app/cookies.txt', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')]
+_found_cookie = next((p for p in _cookie_paths if os.path.exists(p)), None)
+log.info(f"cookies.txt: {_found_cookie or 'NOT FOUND — YouTube may block requests'}")
+
 # Ищем ffmpeg: сначала imageio-ffmpeg, потом системный
 try:
     import imageio_ffmpeg as _iff
@@ -572,27 +581,28 @@ def _download_audio(query_or_url):
 
     for source in sources:
         log.info(f"_download_audio trying: {source}")
-        # Для SoundCloud не используем куки YouTube
-        src_cookie = cookie_opts if not source.startswith('scsearch:') else {}
+        is_sc = source.startswith('scsearch:')
         opts = {
-            **BASE_OPTS, **src_cookie,
+            **BASE_OPTS,
+            **(cookie_opts if not is_sc else {}),
             'format': 'bestaudio/best',
             'outtmpl': f'{out}.%(ext)s',
+            'ignoreerrors': True,
         }
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(source, download=True)
-                if info is None:
+                if not info or not isinstance(info, dict):
+                    log.warning(f"_download_audio [{source}]: no info")
                     continue
                 entries = info.get('entries', None)
                 if entries is not None:
-                    entries = [e for e in entries if e]
+                    entries = [e for e in entries if e and isinstance(e, dict)]
                     if not entries: continue
                     e = entries[0]
                 else:
                     e = info
                 import glob, shutil
-                # Чистим старые файлы перед поиском
                 files = glob.glob(f'{out}.*')
                 if files:
                     file = files[0]
@@ -601,19 +611,21 @@ def _download_audio(query_or_url):
                         shutil.move(file, new_file)
                         file = new_file
                     title = e.get('title') or query_or_url
-                    uploader = e.get('uploader') or e.get('channel') or ''
+                    uploader = e.get('uploader') or e.get('channel') or e.get('uploader_id') or ''
                     log.info(f"_download_audio success: {title} | {uploader}")
                     return {'type': 'audio', 'title': title,
                             'duration': e.get('duration', 0) or 0,
                             'uploader': uploader,
                             'source': e.get('extractor', ''), 'file': file}
+                else:
+                    log.warning(f"_download_audio [{source}]: file not found after download")
         except Exception as ex:
             log.warning(f"_download_audio [{source}]: {ex}")
-            # Чистим битые файлы
-            import glob
-            for f in glob.glob(f'{out}.*'):
-                try: os.remove(f)
-                except: pass
+        # Чистим битые файлы между попытками
+        import glob
+        for f in glob.glob(f'{out}.*'):
+            try: os.remove(f)
+            except: pass
     return None
 
 def _download_video(url):
