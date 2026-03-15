@@ -505,15 +505,19 @@ def _get_video_title(url):
 def _shazam_identify_tiktok(tiktok_url):
     import asyncio as _a
     pid = os.getpid()
-    tmp = tmpfile(f'shazam_tt_{pid}.mp3')
+    base = tmpfile(f'shazam_tt_{pid}')
     opts = {
         **BASE_OPTS, **get_cookie_opts(), 'format': 'bestaudio/best',
-        'outtmpl': tmpfile(f'shazam_tt_{pid}.%(ext)s'),
-        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}],
-        'postprocessor_args': {'ffmpeg': ['-t', '30']},
+        'outtmpl': f'{base}.%(ext)s',
     }
+    tmp = None
     try:
         with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(tiktok_url, download=True)
+        # Находим скачанный файл
+        import glob
+        files = glob.glob(f'{base}.*')
+        if not files: return None
+        tmp = files[0]
         if not os.path.exists(tmp): return None
         loop = _a.new_event_loop()
         try:
@@ -526,7 +530,7 @@ def _shazam_identify_tiktok(tiktok_url):
         return f"{artist} {title}".strip() if title else None
     except Exception as ex: log.warning(f"_shazam_tiktok: {ex}")
     finally:
-        if os.path.exists(tmp):
+        if tmp and os.path.exists(tmp):
             try: os.remove(tmp)
             except: pass
     return None
@@ -534,16 +538,10 @@ def _shazam_identify_tiktok(tiktok_url):
 def _download_audio(query_or_url):
     pid = os.getpid()
     out = tmpfile(f'audio_{pid}')
-    out2 = tmpfile(f'audio2_{pid}')
-    opts_with_ff = {
+    opts = {
         **BASE_OPTS, **get_cookie_opts(),
         'format': 'bestaudio/best',
         'outtmpl': f'{out}.%(ext)s',
-        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-    }
-    opts_no_ff = {
-        **BASE_OPTS, **get_cookie_opts(),
-        'outtmpl': f'{out2}.%(ext)s',
     }
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
@@ -554,38 +552,25 @@ def _download_audio(query_or_url):
         sources = [f"scsearch:{q}", f"ytsearch:{q}"]
     for source in sources:
         log.info(f"_download_audio trying: {source}")
-        for opts, base_out in [(opts_with_ff, out), (opts_no_ff, out2)]:
-            try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(source, download=True)
-                    entries = info.get('entries', None)
-                    if entries is not None:
-                        entries = [e for e in entries if e]
-                        if not entries: raise Exception("empty entries")
-                        e = entries[0]
-                    else:
-                        e = info
-                    file = f'{base_out}.mp3'
-                    if not os.path.exists(file):
-                        for ext in ['m4a', 'opus', 'webm', 'ogg', 'mp4']:
-                            p = f'{base_out}.{ext}'
-                            if os.path.exists(p):
-                                file = p; break
-                    # Логируем что нашли
-                    import glob
-                    found_files = glob.glob(f'{base_out}*')
-                    log.info(f"_download_audio found files: {found_files}, looking for: {file}")
-                    if os.path.exists(file):
-                        return {'type': 'audio', 'title': e.get('title', query_or_url),
-                                'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
-                                'source': e.get('extractor', ''), 'file': file}
-            except Exception as ex:
-                err = str(ex).lower()
-                if 'empty entries' in err: break
-                if 'timed out' in err or 'timeout' in err: continue
-                if 'ffprobe' in err or 'postprocessing' in err:
-                    log.warning(f"_download_audio ffprobe, trying no-ff: {ex}"); continue
-                log.warning(f"_download_audio: {ex}"); break
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(source, download=True)
+                entries = info.get('entries', None)
+                if entries is not None:
+                    entries = [e for e in entries if e]
+                    if not entries: continue
+                    e = entries[0]
+                else:
+                    e = info
+                import glob
+                files = glob.glob(f'{out}.*')
+                if files:
+                    file = files[0]
+                    return {'type': 'audio', 'title': e.get('title', query_or_url),
+                            'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
+                            'source': e.get('extractor', ''), 'file': file}
+        except Exception as ex:
+            log.warning(f"_download_audio: {ex}")
     return None
 
 def _download_video(url):
