@@ -437,19 +437,20 @@ BASE_OPTS = {
 # Ищем ffmpeg: сначала imageio-ffmpeg, потом системный
 try:
     import imageio_ffmpeg as _iff
+    import shutil
     _ffmpeg_bin = _iff.get_ffmpeg_exe()
-    _ffmpeg_dir = os.path.dirname(_ffmpeg_bin)
-    # Создаём ffprobe как копию ffmpeg если не существует
-    _ffprobe = os.path.join(_ffmpeg_dir, 'ffprobe')
-    if not os.path.exists(_ffprobe):
-        import shutil
-        try:
-            shutil.copy2(_ffmpeg_bin, _ffprobe)
-            os.chmod(_ffprobe, 0o755)
-        except Exception as _e:
-            log.warning(f"ffprobe copy failed: {_e}")
-    BASE_OPTS['ffmpeg_location'] = _ffmpeg_dir
-    log.info(f"ffmpeg: {_ffmpeg_bin}, ffprobe exists: {os.path.exists(_ffprobe)}")
+    # Копируем ffmpeg и ffprobe в /tmp где есть права на запись
+    _tmp_ffmpeg = '/tmp/ffmpeg'
+    _tmp_ffprobe = '/tmp/ffprobe'
+    if not os.path.exists(_tmp_ffmpeg):
+        shutil.copy2(_ffmpeg_bin, _tmp_ffmpeg)
+        os.chmod(_tmp_ffmpeg, 0o755)
+    if not os.path.exists(_tmp_ffprobe):
+        shutil.copy2(_ffmpeg_bin, _tmp_ffprobe)
+        os.chmod(_tmp_ffprobe, 0o755)
+    BASE_OPTS['ffmpeg_location'] = '/tmp'
+    os.environ['PATH'] = '/tmp:' + os.environ.get('PATH', '')
+    log.info(f"ffmpeg ready at /tmp, ffprobe exists: {os.path.exists(_tmp_ffprobe)}")
 except Exception as _ex:
     log.warning(f"imageio_ffmpeg not found: {_ex}")
 
