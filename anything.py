@@ -497,7 +497,7 @@ def _shazam_identify_tiktok(tiktok_url):
         **BASE_OPTS, **get_cookie_opts(), 'format': 'bestaudio/best',
         'outtmpl': tmpfile(f'shazam_tt_{pid}.%(ext)s'),
         'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}],
-        'postprocessor_args': ['-t', '30'],
+        'postprocessor_args': {'ffmpeg': ['-t', '30']},
     }
     try:
         with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(tiktok_url, download=True)
