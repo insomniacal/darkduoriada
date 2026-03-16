@@ -1,4 +1,4 @@
-import os, re, asyncio, hashlib, logging, unicodedata, urllib.request, urllib.parse, json
+import os, re, asyncio, logging, unicodedata, urllib.request, urllib.parse, json
 from concurrent.futures import ThreadPoolExecutor
 import yt_dlp
 from shazamio import Shazam
@@ -127,11 +127,9 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=8)
-cache: dict = {}
-CACHE_MAX = 30
 _url_store: dict = {}
 _trim_state: dict = {}
-_user_state: dict = {}  # {user_id: {'action': 'create_folder'|'choose_folder', ...}}
+_user_state: dict = {}
 
 URL_PATTERN = re.compile(
     r'https?://(www\.|vm\.|vt\.)?'
@@ -145,10 +143,14 @@ def is_url(t): return bool(URL_PATTERN.search(t))
 def is_pinterest(t): return 'pinterest.com' in t or 'pin.it' in t
 def is_tiktok(t): return 'tiktok.com' in t
 def is_spotify(t): return 'spotify.com' in t
-def cache_key(q): return hashlib.md5(q.lower().strip().encode()).hexdigest()
+def fmt_dur(s):
+    s = int(s or 0)
+    return f"{s//60}:{s%60:02d}"
 
+_url_store_counter = [0]
 def store_url(v):
-    k = hashlib.md5(v.encode()).hexdigest()[:16]
+    _url_store_counter[0] += 1
+    k = str(_url_store_counter[0])
     _url_store[k] = v
     return k
 
@@ -162,14 +164,6 @@ def get_cookie_opts():
 def fmt_dur(s):
     s = int(s or 0)
     return f"{s//60}:{s%60:02d}"
-
-def src_emoji(s):
-    s = s.lower()
-    if 'youtube' in s: return '▶️ YouTube'
-    if 'soundcloud' in s: return '🔊 SoundCloud'
-    if 'tiktok' in s: return '🎵 TikTok'
-    if 'pinterest' in s: return '📌 Pinterest'
-    return '🌐 Web'
 
 def clean_q(text):
     r = []
@@ -206,11 +200,7 @@ def clean_search_query(text):
     q = ' '.join(q.split()).strip()
     return q if len(q) > 2 else text
 
-def resolve_url(url):
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp: return resp.url
-    except: return url
+def tmpfile(name): return os.path.join(TEMP_DIR, name)
 
 def parse_time(s):
     s = s.strip()
@@ -221,18 +211,6 @@ def parse_time(s):
         elif len(parts) == 3: return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
     except: pass
     return None
-
-def save_cache(ck, result):
-    global cache
-    if len(cache) >= CACHE_MAX:
-        old = cache.pop(next(iter(cache)))
-        f = old.get('file', '')
-        if f and os.path.exists(f):
-            try: os.remove(f)
-            except: pass
-    cache[ck] = result
-
-def tmpfile(name): return os.path.join(TEMP_DIR, name)
 
 # ── Библиотека (SQLite) ───────────────────────────────────────────────────────
 import psycopg2
@@ -587,52 +565,6 @@ def _shazam_identify_tiktok(tiktok_url):
                 except: pass
     return None
 
-def _search_track_meta(query_or_url):
-    """Ищет трек и возвращает только метаданные без скачивания"""
-    cookie_opts = get_cookie_opts()
-
-    if is_spotify(query_or_url):
-        sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
-    elif is_url(query_or_url):
-        sources = [query_or_url]
-    else:
-        q = clean_q(query_or_url)
-        q_clean = clean_search_query(q)
-        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
-        if q_clean != q and len(q_clean) > 2:
-            sources += [f"scsearch:{q_clean}", f"ytsearch:{q_clean}"]
-
-    for source in sources:
-        is_sc = source.startswith('scsearch:')
-        opts = {
-            **BASE_OPTS,
-            **(cookie_opts if not is_sc else {}),
-            'skip_download': True,
-            'extract_flat': False,
-            'quiet': True,
-        }
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(source, download=False)
-            if not info or not isinstance(info, dict):
-                continue
-            entries = info.get('entries', None)
-            e = (entries[0] if entries and entries[0] else None) if entries is not None else info
-            if not e or not e.get('title'):
-                continue
-            return {
-                'title': e.get('title', ''),
-                'uploader': e.get('uploader') or e.get('channel') or e.get('uploader_id') or '',
-                'duration': e.get('duration', 0) or 0,
-                'source': e.get('extractor', ''),
-                'url': e.get('webpage_url') or e.get('url') or source,
-                'thumbnail': e.get('thumbnail', ''),
-            }
-        except Exception as ex:
-            log.warning(f"_search_track_meta [{source}]: {ex}")
-    return None
-
 def _download_audio(query_or_url):
     import glob, shutil, uuid
     # Уникальный ID на каждый вызов — никаких конфликтов файлов между параллельными запросами
@@ -642,17 +574,16 @@ def _download_audio(query_or_url):
 
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+        sources = [f"ytsearch:{sq}", f"scsearch:{sq}"] if sq else []
     elif is_url(query_or_url):
         sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
         q_clean = clean_search_query(q)
-        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
-        # Если запрос изменился после очистки — добавляем fallback с чистым запросом
+        sources = [f"ytsearch:{q}", f"scsearch:{q}"]
         if q_clean != q and len(q_clean) > 2:
             log.info(f"_download_audio clean query: '{q}' → '{q_clean}'")
-            sources += [f"scsearch:{q_clean}", f"ytsearch:{q_clean}"]
+            sources += [f"ytsearch:{q_clean}", f"scsearch:{q_clean}"]
 
     for source in sources:
         # Чистим перед каждой попыткой чтобы не подобрать файл от предыдущего источника
@@ -772,31 +703,6 @@ def _download_video(url):
             log.warning(f"_download_video: {ex}"); break
     return None
 
-def _search_similar_tracks(query, max_results=5):
-    results = []
-    for source in [f"scsearch{max_results}:{query}", f"ytsearch{max_results}:{query}"]:
-        try:
-            opts = {**BASE_OPTS, 'skip_download': True, 'extract_flat': True}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(source, download=False)
-                for e in info.get('entries', []):
-                    if not e: continue
-                    title = e.get('title', '')
-                    url = e.get('url') or e.get('webpage_url', '')
-                    dur = e.get('duration', 0) or 0
-                    uploader = e.get('uploader', '') or e.get('channel', '')
-                    if title and url:
-                        results.append({'title': title, 'url': url, 'duration': dur, 'uploader': uploader})
-                    if len(results) >= max_results: break
-        except Exception as ex: log.warning(f"_search_similar: {ex}")
-        if len(results) >= max_results: break
-    seen = set(); unique = []
-    for r in results:
-        k = r['title'].lower()
-        if k not in seen:
-            seen.add(k); unique.append(r)
-    return unique[:max_results]
-
 def _extract_audio_segment(video_path, start_sec, duration=20):
     """Вырезаем кусок видео для Shazam"""
     import uuid
@@ -892,23 +798,6 @@ async def _recognize_shazam(file_path):
     return None
 
 # ── Кэш: отправка ─────────────────────────────────────────────────────────────
-async def _send_cached(update, cached):
-    f = cached.get('file', '')
-    if not os.path.exists(f): return False
-    try:
-        msg = await safe_reply(update, "⚡️ <b>Мгновенно из кэша!</b>", parse_mode="HTML")
-        with open(f, 'rb') as fp:
-            if cached['type'] == 'audio':
-                await update.message.reply_audio(fp, title=cached['title'], performer=cached['uploader'])
-            else:
-                await update.message.reply_video(fp, caption=f"🎬 <b>{cached['title']}</b>", parse_mode="HTML")
-        if msg:
-            try: await msg.delete()
-            except: pass
-        return True
-    except: return False
-
-# ── Вспомогательные функции отправки ──────────────────────────────────────────
 # ── Команды ───────────────────────────────────────────────────────────────────
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
@@ -1079,8 +968,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if url_match and is_tiktok(text):
         msg = await safe_reply(update, t(uid, 'processing'), parse_mode="HTML")
         if not msg: return
-        resolved = await loop.run_in_executor(executor, resolve_url, text)
-        tiktok_url = resolved if 'tiktok.com' in resolved else text
+        tiktok_url = text
 
         # Параллельно: Shazam + метаданные TikTok
         await safe_edit(msg, t(uid, 'searching_track'), parse_mode="HTML")
@@ -1147,55 +1035,50 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── YouTube / SoundCloud / Spotify / поиск ────────────────────────────────
     if search_match:
-        if lower.startswith("найти "):
-            query = text[6:].strip()
-        else:
-            query = text[5:].strip()  # "find "
+        query = text[6:].strip() if lower.startswith("найти ") else text[5:].strip()
     else:
         query = text
-    ck = cache_key(query)
-    if ck in cache:
-        if await _send_cached(update, cache[ck]): return
-        del cache[ck]
 
-    display = "по ссылке" if url_match else f"«<b>{query}</b>»"
-    msg = await safe_reply(update, f"🔍 Ищу {display}...", parse_mode="HTML")
+    msg = await safe_reply(update, "🔍 Ищу...", parse_mode="HTML")
     if not msg: return
 
     try:
-        meta = await asyncio.wait_for(
-            loop.run_in_executor(executor, _search_track_meta, query), timeout=30)
+        result = await asyncio.wait_for(
+            loop.run_in_executor(executor, _download_audio, query), timeout=120)
     except asyncio.TimeoutError:
-        meta = None
+        result = None
 
-    if not meta:
+    if not result or not os.path.exists(result.get('file', '')):
         await safe_edit(msg, t(uid, 'not_found'), parse_mode="HTML"); return
 
-    title = meta['title']
-    uploader = meta['uploader']
-    # Сохраняем мета вместе с url чтобы использовать при скачивании
-    meta_key = store_url(json.dumps({
-        'url': meta['url'], 'title': title, 'uploader': uploader,
-        'duration': meta['duration'], 'source': meta['source']
-    }, ensure_ascii=False))
+    title = result['title']
+    uploader = result['uploader']
     save_key = store_url(json.dumps({'title': title, 'artist': uploader,
-                                      'duration': meta['duration']}, ensure_ascii=False))
+                                      'duration': result['duration']}, ensure_ascii=False))
+    kb = InlineKeyboardMarkup([[InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")]])
 
-    kb = InlineKeyboardMarkup([
-        [
-            InlineKeyboardButton("🎵 Скачать музыку", callback_data=f"dl_audio|{meta_key}"),
-            InlineKeyboardButton("🎬 Скачать видео", callback_data=f"dl_video|{meta_key}"),
-        ],
-    ])
+    try: await safe_edit(msg, "📤 Отправляю...", parse_mode="HTML")
+    except: pass
 
-    await safe_edit(
-        msg,
-        f"✅ <b>Трек найден!</b>\n\n"
-        f"🎵 <b>{title}</b>\n"
-        f"👤 {uploader}",
-        parse_mode="HTML",
-        reply_markup=kb
-    )
+    try:
+        from telegram import InputFile
+        with open(result['file'], 'rb') as f:
+            sent = await update.message.reply_audio(
+                InputFile(f, filename='audio.mp3'),
+                title=title, performer=uploader,
+                caption=f"<b>{title}</b>\n{uploader}",
+                parse_mode="HTML", reply_markup=kb)
+        if sent and sent.audio:
+            _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
+                                'file_id': sent.audio.file_id, 'duration': result['duration']}
+        try: await msg.delete()
+        except: pass
+    except Exception as ex:
+        log.error(f"handle_message send: {ex}")
+        await safe_edit(msg, f"⚠️ Ошибка: <code>{ex}</code>", parse_mode="HTML")
+    finally:
+        try: os.remove(result['file'])
+        except: pass
 
 
 # ── Callback кнопок ───────────────────────────────────────────────────────────
@@ -1215,98 +1098,6 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         await cb.message.reply_text(t(uid, 'lang_set'), parse_mode="HTML")
         await cb.message.reply_text(t(uid, 'welcome', name=name), parse_mode="HTML")
-        return
-    # ── Скачать музыку по кнопке ──────────────────────────────────────────────
-    if data.startswith("dl_audio|"):
-        raw = get_stored(data.split("|", 1)[1])
-        try:
-            meta = json.loads(raw)
-            url = meta['url']
-            meta_title = meta.get('title', '')
-            meta_uploader = meta.get('uploader', '')
-            meta_duration = meta.get('duration', 0)
-        except:
-            url = raw; meta_title = ''; meta_uploader = ''; meta_duration = 0
-
-        try: await cb.edit_message_text("⏳ <b>Скачиваю...</b>", parse_mode="HTML")
-        except: pass
-
-        result = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(executor, _download_audio, url), timeout=120)
-        if not result or not os.path.exists(result.get('file', '')):
-            try: await cb.edit_message_text(t(uid, 'not_found'), parse_mode="HTML")
-            except: pass
-            return
-
-        # Используем title/uploader из мета (они правильные), не из SC файла
-        title = meta_title or result['title']
-        uploader = meta_uploader or result['uploader']
-        duration = meta_duration or result['duration']
-
-        save_key = store_url(json.dumps({'title': title, 'artist': uploader,
-                                          'duration': duration}, ensure_ascii=False))
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")]])
-        try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
-        except: pass
-        try:
-            from telegram import InputFile
-            with open(result['file'], 'rb') as f:
-                sent = await cb.message.reply_audio(
-                    InputFile(f, filename='audio.mp3'),
-                    title=title, performer=uploader,
-                    caption=f"🎵 <b>{title}</b>\n👤 {uploader}",
-                    parse_mode="HTML", reply_markup=kb)
-            if sent and sent.audio:
-                _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
-                                    'file_id': sent.audio.file_id, 'duration': duration}
-            try: await cb.message.delete()
-            except: pass
-        except Exception as ex:
-            log.error(f"dl_audio send: {ex}")
-            try: await cb.edit_message_text(f"⚠️ Ошибка: <code>{ex}</code>", parse_mode="HTML")
-            except: pass
-        finally:
-            try: os.remove(result['file'])
-            except: pass
-        return
-
-    # ── Скачать видео по кнопке ───────────────────────────────────────────────
-    if data.startswith("dl_video|"):
-        raw = get_stored(data.split("|", 1)[1])
-        try:
-            meta = json.loads(raw)
-            url = meta['url']
-            meta_title = meta.get('title', '')
-            meta_uploader = meta.get('uploader', '')
-        except:
-            url = raw; meta_title = ''; meta_uploader = ''
-
-        try: await cb.edit_message_text("⏳ <b>Скачиваю видео...</b>", parse_mode="HTML")
-        except: pass
-        result = await asyncio.wait_for(
-            asyncio.get_event_loop().run_in_executor(executor, _download_video, url), timeout=120)
-        if not result or not os.path.exists(result.get('file', '')):
-            try: await cb.edit_message_text(t(uid, 'not_found'), parse_mode="HTML")
-            except: pass
-            return
-        title = meta_title or result['title']
-        uploader = meta_uploader or result['uploader']
-        try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
-        except: pass
-        try:
-            with open(result['file'], 'rb') as f:
-                await cb.message.reply_video(f,
-                    caption=f"🎬 <b>{title}</b>\n👤 {uploader}",
-                    parse_mode="HTML")
-            try: await cb.message.delete()
-            except: pass
-        except Exception as ex:
-            log.error(f"dl_video send: {ex}")
-            try: await cb.edit_message_text(f"⚠️ Ошибка: <code>{ex}</code>", parse_mode="HTML")
-            except: pass
-        finally:
-            try: os.remove(result['file'])
-            except: pass
         return
 
     if data.startswith("vid_shazam|"):
@@ -1610,40 +1401,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
 
-    # ── Похожие треки / треки исполнителя ────────────────────────────────────
+    # ── Скачать аудио / видео ─────────────────────────────────────────────────
     if '|' not in data: return
     action, key = data.split('|', 1)
     value = get_stored(key)
-
-    if action in ('similar', 'artist'):
-        label = "похожие треки" if action == 'similar' else f"треки «{value}»"
-        try: await cb.edit_message_text(f"🔍 Ищу {label}...", parse_mode="HTML")
-        except: pass
-
-        search_q = value if action == 'similar' else f"{value} best songs"
-        tracks = await loop.run_in_executor(executor, _search_similar_tracks, search_q)
-
-        if not tracks:
-            try: await cb.edit_message_text("😔 Ничего не нашёл.")
-            except: pass
-            return
-
-        buttons = []
-        lines = []
-        for i, tr in enumerate(tracks, 1):
-            dur = fmt_dur(tr['duration']) if tr['duration'] else '?'
-            lines.append(f"{i}. <b>{tr['title']}</b> — {tr['uploader']} ⏱{dur}")
-            t_key = store_url(tr['url'])
-            buttons.append([InlineKeyboardButton(f"⬇️ {i}. {tr['title'][:30]}", callback_data=f"audio|{t_key}")])
-
-        header = "🔀 <b>Похожие треки:</b>" if action == 'similar' else f"🎤 <b>Треки исполнителя:</b>"
-        text = header + "\n━━━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines)
-        try:
-            await cb.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        except Exception as ex: log.warning(f"similar edit: {ex}")
-        return
-
-    # ── Скачать аудио / видео ─────────────────────────────────────────────────
     emoji = '🎵' if 'audio' in action else '🎬'
     try: await cb.edit_message_text(f"{emoji} <b>Загружаю...</b>", parse_mode="HTML")
     except: pass
@@ -1678,15 +1439,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
         if result['type'] == 'audio':
-            similar_key = store_url(f"{uploader} {title}")
-            artist_key  = store_url(uploader)
             save_key = store_url(json.dumps({'title': title, 'artist': uploader,
                                               'duration': result['duration']}, ensure_ascii=False))
             kb = InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton(t(uid, 'similar'), callback_data=f"similar|{similar_key}"),
-                    InlineKeyboardButton(t(uid, 'by_artist'), callback_data=f"artist|{artist_key}"),
-                ],
                 [InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")],
             ])
             sent = None
