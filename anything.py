@@ -787,45 +787,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loop = asyncio.get_event_loop()
     lower = text.lower()
 
-    # ── Ожидаем название трека после неудачного Shazam ───────────────────────
-    if state.get('action') == 'vid_search_query':
-        query = text.strip()
-        _user_state.pop(uid, None)
-        msg = await safe_reply(update, f"🔍 <b>Ищу: {query}...</b>", parse_mode="HTML")
-
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(executor, _download_audio, query)
-
-        if result and result.get('file') and os.path.exists(result['file']):
-            title = result.get('title', '')
-            uploader = result.get('uploader', '')
-            q_key = store_url(query)
-            kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{q_key}")
-            ]])
-            try:
-                if msg: await msg.edit_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
-                from telegram import InputFile as _IF
-                with open(result['file'], 'rb') as fp:
-                    await update.message.reply_audio(
-                        _IF(fp, filename='audio.mp3'),
-                        title=title, performer=uploader,
-                        caption=f"🎵 <b>{title}</b>\n👤 {uploader}",
-                        parse_mode="HTML", reply_markup=kb
-                    )
-                if msg:
-                    try: await msg.delete()
-                    except: pass
-            except Exception as ex:
-                log.error(f"vid_search_query send: {ex}")
-                if msg: await msg.edit_text("⚠️ Не удалось отправить файл.", parse_mode="HTML")
-            finally:
-                try: os.remove(result['file'])
-                except: pass
-        else:
-            if msg: await msg.edit_text(t(uid, 'not_found'), parse_mode="HTML")
-        return
-
     # ── Ожидаем название новой папки ─────────────────────────────────────────
     state = _user_state.get(uid, {})
     if state.get('action') == 'create_folder':
@@ -1147,63 +1108,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _user_state.pop(uid, None)
 
         if not track:
-            # Shazam не нашёл — пробуем SoundCloud/YouTube по имени файла
-            # Берём caption сообщения или имя файла как запрос
-            state = _user_state.get(uid, {})
-            fallback_query = state.get('vid_caption') or state.get('vid_filename') or ''
-            fallback_query = fallback_query.strip()
-
-            if fallback_query:
-                try: await cb.edit_message_text(f"🔍 <b>Shazam не нашёл, ищу в SoundCloud/YouTube...</b>", parse_mode="HTML")
-                except: pass
-
-                loop2 = asyncio.get_event_loop()
-                result = await loop2.run_in_executor(executor, _download_audio, fallback_query)
-
-                if result and result.get('file') and os.path.exists(result['file']):
-                    try: await cb.edit_message_text(f"📤 <b>Отправляю...</b>", parse_mode="HTML")
-                    except: pass
-                    title = result.get('title', '')
-                    uploader = result.get('uploader', '')
-                    q_key = store_url(fallback_query)
-                    kb = InlineKeyboardMarkup([[
-                        InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{q_key}")
-                    ]])
-                    try:
-                        from telegram import InputFile as _IF
-                        with open(result['file'], 'rb') as fp:
-                            await context.bot.send_audio(
-                                chat_id=cb.message.chat_id,
-                                audio=_IF(fp, filename='audio.mp3'),
-                                title=title, performer=uploader,
-                                caption=f"🎵 <b>{title}</b>\n👤 {uploader}",
-                                parse_mode="HTML", reply_markup=kb
-                            )
-                        try: await cb.message.delete()
-                        except: pass
-                    except Exception as ex:
-                        log.error(f"vid_shazam fallback send: {ex}")
-                        try: await cb.edit_message_text("⚠️ Не удалось отправить файл.", parse_mode="HTML")
-                        except: pass
-                    finally:
-                        try: os.remove(result['file'])
-                        except: pass
-                else:
-                    try: await cb.edit_message_text(t(uid, 'track_not_found'), parse_mode="HTML")
-                    except: pass
-            else:
-                # Нет имени файла — просим пользователя написать название трека
-                _user_state[uid] = {
-                    'action': 'vid_search_query',
-                    'vid_path': vid_path,  # vid_path уже удалён выше, но state нужен для обработки ввода
-                }
-                try:
-                    await cb.edit_message_text(
-                        "😔 <b>Shazam не смог распознать трек.</b>\n\n"
-                        "Напиши название трека — найду в SoundCloud/YouTube:",
-                        parse_mode="HTML"
-                    )
-                except: pass
+            try: await cb.edit_message_text(t(uid, 'track_not_found'), parse_mode="HTML")
+            except: pass
             return
 
         q_key = store_url(track['query'])
