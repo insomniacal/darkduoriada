@@ -1671,8 +1671,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             await cb.edit_message_text(
                 f"✅ <b>{title}</b>\n"
-                f"👤 {uploader}  •  {src_emoji(result['source'])}\n"
-                f"⏱ {fmt_dur(result['duration'])}\n"
+                f"👤 {uploader}\n"
                 f"📤 Отправляю...",
                 parse_mode="HTML"
             )
@@ -1696,7 +1695,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent = await cb.message.reply_audio(
                     InputFile(f, filename='audio.mp3'),
                     title=title, performer=uploader,
-                    caption=f"🎵 <b>{title}</b>\n👤 {uploader}  •  {src_emoji(result['source'])}\n⏱ {fmt_dur(result['duration'])}",
+                    caption=f"<b>{title}</b>\n{uploader}",
                     parse_mode="HTML",
                     reply_markup=kb)
 
