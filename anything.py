@@ -615,6 +615,22 @@ def _download_audio(query_or_url):
                 else:
                     e = info
 
+            # Если метаданные пустые (SC JSON ошибка) — запрашиваем отдельно без скачивания
+            if not e.get('title'):
+                try:
+                    meta_opts = {**BASE_OPTS, 'skip_download': True, 'quiet': True, 'no_warnings': True}
+                    with yt_dlp.YoutubeDL(meta_opts) as ydl2:
+                        meta = ydl2.extract_info(source, download=False)
+                    if meta and isinstance(meta, dict):
+                        entries2 = meta.get('entries', None)
+                        if entries2:
+                            valid2 = [x for x in entries2 if x and isinstance(x, dict)]
+                            if valid2: e = valid2[0]
+                        elif meta.get('title'):
+                            e = meta
+                except Exception as meta_ex:
+                    log.warning(f"_download_audio meta fallback [{source}]: {meta_ex}")
+
             file = files[0]
             if not file.endswith('.mp3'):
                 new_file = f'{out}.mp3'
