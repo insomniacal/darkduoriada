@@ -707,10 +707,79 @@ def _search_similar_tracks(query, max_results=5):
             seen.add(k); unique.append(r)
     return unique[:max_results]
 
+def _extract_audio_segment(video_path, start_sec, duration=20):
+    """Вырезаем кусок видео для Shazam"""
+    import uuid
+    uid = uuid.uuid4().hex[:8]
+    out = tmpfile(f'shazam_seg_{uid}.mp3')
+    ret = os.system(f'/tmp/ffmpeg -y -ss {start_sec} -i "{video_path}" -t {duration} -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
+    return out if ret == 0 and os.path.exists(out) and os.path.getsize(out) > 1000 else None
+
 def _extract_audio_for_shazam(video_path):
+    """Обратная совместимость — берём первые 30 сек"""
     out = video_path + '_shazam.mp3'
     ret = os.system(f'/tmp/ffmpeg -y -i "{video_path}" -t 30 -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
     return out if ret == 0 and os.path.exists(out) else None
+
+async def _recognize_shazam_best(video_path):
+    """Пробуем несколько кусков видео, берём результат с наибольшей уверенностью"""
+    import subprocess
+    # Узнаём длину видео
+    try:
+        r = subprocess.run(
+            ['/tmp/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path],
+            capture_output=True, text=True, timeout=10
+        )
+        duration = float(json.loads(r.stdout).get('format', {}).get('duration', 60))
+    except:
+        duration = 60
+
+    # Выбираем точки: 0, 25%, 50% видео
+    starts = [0]
+    if duration > 30: starts.append(int(duration * 0.25))
+    if duration > 60: starts.append(int(duration * 0.5))
+
+    best_result = None
+    best_score = 0
+    segments = []
+
+    for start in starts:
+        seg = _extract_audio_segment(video_path, start, duration=20)
+        if seg:
+            segments.append(seg)
+
+    async def try_recognize(seg_path):
+        try:
+            shazam = Shazam()
+            result = await shazam.recognize(seg_path)
+            matches = result.get('matches', [])
+            if not matches: return None, 0
+            score = matches[0].get('score', 1) if matches else 0
+            track = result.get('track', {})
+            title = track.get('title', '')
+            artist = track.get('subtitle', '')
+            if title:
+                return {'title': title, 'artist': artist, 'query': f"{artist} {title}".strip()}, score
+        except Exception as ex:
+            log.warning(f"Shazam segment: {ex}")
+        return None, 0
+
+    tasks = [try_recognize(seg) for seg in segments]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for r in results:
+        if isinstance(r, tuple):
+            track, score = r
+            if track and score >= best_score:
+                best_score = score
+                best_result = track
+
+    # Чистим сегменты
+    for seg in segments:
+        try: os.remove(seg)
+        except: pass
+
+    return best_result
 
 def _trim_audio(src, start_sec, end_sec):
     out = src.replace('.mp3', f'_trim_{start_sec}_{end_sec or "end"}.mp3')
@@ -1093,24 +1162,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await cb.answer(t(uid, 'file_not_found'), show_alert=True)
             return
         try:
-            await cb.edit_message_text(t(uid, 'searching_track'), parse_mode="HTML")
+            await cb.edit_message_text("🎵 <b>Распознаю трек...</b>", parse_mode="HTML")
         except: pass
 
-        loop = asyncio.get_event_loop()
-        aud_path = await loop.run_in_executor(executor, _extract_audio_for_shazam, vid_path)
-        if not aud_path:
-            try: await cb.edit_message_text("⚠️ ffmpeg не найден или ошибка извлечения аудио.", parse_mode="HTML")
-            except: pass
-            return
-
         try:
-            track = await asyncio.wait_for(_recognize_shazam(aud_path), timeout=30)
+            track = await asyncio.wait_for(_recognize_shazam_best(vid_path), timeout=60)
         except asyncio.TimeoutError:
             track = None
-        finally:
-            if os.path.exists(aud_path):
-                try: os.remove(aud_path)
-                except: pass
 
         # Удаляем видеофайл
         if os.path.exists(vid_path):
