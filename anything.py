@@ -1108,8 +1108,53 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _user_state.pop(uid, None)
 
         if not track:
-            try: await cb.edit_message_text(t(uid, 'track_not_found'), parse_mode="HTML")
-            except: pass
+            # Shazam не нашёл — пробуем SoundCloud/YouTube по имени файла
+            # Берём caption сообщения или имя файла как запрос
+            state = _user_state.get(uid, {})
+            fallback_query = state.get('vid_caption') or state.get('vid_filename') or ''
+            fallback_query = fallback_query.strip()
+
+            if fallback_query:
+                try: await cb.edit_message_text(f"🔍 <b>Shazam не нашёл, ищу в SoundCloud/YouTube...</b>", parse_mode="HTML")
+                except: pass
+
+                loop2 = asyncio.get_event_loop()
+                result = await loop2.run_in_executor(executor, _download_audio, fallback_query)
+
+                if result and result.get('file') and os.path.exists(result['file']):
+                    try: await cb.edit_message_text(f"📤 <b>Отправляю...</b>", parse_mode="HTML")
+                    except: pass
+                    title = result.get('title', '')
+                    uploader = result.get('uploader', '')
+                    q_key = store_url(fallback_query)
+                    kb = InlineKeyboardMarkup([[
+                        InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{q_key}")
+                    ]])
+                    try:
+                        from telegram import InputFile as _IF
+                        with open(result['file'], 'rb') as fp:
+                            await context.bot.send_audio(
+                                chat_id=cb.message.chat_id,
+                                audio=_IF(fp, filename='audio.mp3'),
+                                title=title, performer=uploader,
+                                caption=f"🎵 <b>{title}</b>\n👤 {uploader}",
+                                parse_mode="HTML", reply_markup=kb
+                            )
+                        try: await cb.message.delete()
+                        except: pass
+                    except Exception as ex:
+                        log.error(f"vid_shazam fallback send: {ex}")
+                        try: await cb.edit_message_text("⚠️ Не удалось отправить файл.", parse_mode="HTML")
+                        except: pass
+                    finally:
+                        try: os.remove(result['file'])
+                        except: pass
+                else:
+                    try: await cb.edit_message_text(t(uid, 'track_not_found'), parse_mode="HTML")
+                    except: pass
+            else:
+                try: await cb.edit_message_text(t(uid, 'track_not_found'), parse_mode="HTML")
+                except: pass
             return
 
         q_key = store_url(track['query'])
@@ -1528,10 +1573,18 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # Сохраняем путь к видео в состоянии пользователя
     vid_dur = getattr(video, 'duration', 0) or 0
+    # Для fallback поиска если Shazam не найдёт
+    vid_caption = update.message.caption or ''
+    vid_filename = getattr(video, 'file_name', '') or ''
+    # Убираем расширение из имени файла
+    if vid_filename:
+        vid_filename = os.path.splitext(vid_filename)[0]
     _user_state[uid] = {
         'action': 'video_menu',
         'vid_path': vid_path,
         'vid_dur': vid_dur,
+        'vid_caption': vid_caption,
+        'vid_filename': vid_filename,
     }
 
     vid_key = store_url(vid_path)
