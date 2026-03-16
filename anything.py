@@ -185,17 +185,23 @@ def clean_q(text):
 
 def clean_search_query(text):
     """Очищаем поисковый запрос от шума — убираем теги и скобки"""
-    # Убираем содержимое скобок типа (slowed), (reverb), (instrumental), etc
+    # Восстанавливаем цензурированные слова f**k → fuck, s**t → shit
+    q = re.sub(r'f\*+k', 'fuck', text, flags=re.IGNORECASE)
+    q = re.sub(r's\*+t', 'shit', q, flags=re.IGNORECASE)
+    q = re.sub(r'f\*+d', 'fucked', q, flags=re.IGNORECASE)
+    q = re.sub(r'b\*+h', 'bitch', q, flags=re.IGNORECASE)
+    q = re.sub(r'a\*+e', 'asshole', q, flags=re.IGNORECASE)
+    # Убираем содержимое скобок с шумовыми тегами
     noise_tags = re.compile(
         r'\s*[\(\[\{][^\)\]\}]*'
         r'(slowed|reverb|sped up|nightcore|instrumental|remix|edit|version|official|lyrics|video|hd|hq|4k|vevo|feat|ft\.)'
         r'[^\)\]\}]*[\)\]\}]',
         re.IGNORECASE
     )
-    q = noise_tags.sub('', text)
+    q = noise_tags.sub('', q)
     # Убираем оставшиеся незакрытые скобки
     q = re.sub(r'\s*[\(\[\{][^\)\]\}]*$', '', q)
-    # Убираем лишние символы и пробелы
+    # Убираем оставшиеся звёздочки и лишние символы
     q = re.sub(r'[*_|]+', '', q)
     q = ' '.join(q.split()).strip()
     return q if len(q) > 2 else text
@@ -659,7 +665,7 @@ def _download_audio(query_or_url):
         opts = {
             **BASE_OPTS,
             **(cookie_opts if not is_sc else {}),
-            'format': 'bestaudio[filesize<50M]/bestaudio/best[filesize<50M]/best',
+            'format': 'bestaudio/best',
             'outtmpl': f'{out}.%(ext)s',
             'ignoreerrors': True,
         }
