@@ -711,8 +711,24 @@ def _download_audio(query_or_url):
                 shutil.move(file, new_file)
                 file = new_file
 
-            title = e.get('title') or query_or_url
+            title = e.get('title') or ''
+            # Чистим title если это имя файла (подчёркивания, хэш в конце, расширение)
+            if not title or '_' in title or title.endswith('.mp3'):
+                # Убираем расширение
+                raw = re.sub(r'\.(mp3|mp4|wav|ogg|flac|m4a)$', '', title or os.path.basename(file), flags=re.IGNORECASE)
+                # Убираем числовой хэш в конце типа _80120579
+                raw = re.sub(r'_\d{6,}$', '', raw)
+                # Заменяем подчёркивания на пробелы
+                raw = raw.replace('_', ' ').strip()
+                # Если после очистки стало нормально — используем
+                if len(raw) > 2:
+                    title = raw
+            if not title:
+                title = query_or_url
             uploader = e.get('uploader') or e.get('channel') or e.get('uploader_id') or ''
+            # Чистим uploader если тоже мусор (рандомные символы)
+            if uploader and re.match(r'^[A-Z0-9]{10,}$', uploader):
+                uploader = ''
             log.info(f"_download_audio OK: {title} | {uploader}")
             return {
                 'type': 'audio', 'title': title,
