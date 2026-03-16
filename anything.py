@@ -1173,27 +1173,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     title = meta['title']
     uploader = meta['uploader']
-    dur = fmt_dur(meta['duration'])
-    src = src_emoji(meta['source'])
-    url_key = store_url(meta['url'])
+    # Сохраняем мета вместе с url чтобы использовать при скачивании
+    meta_key = store_url(json.dumps({
+        'url': meta['url'], 'title': title, 'uploader': uploader,
+        'duration': meta['duration'], 'source': meta['source']
+    }, ensure_ascii=False))
     save_key = store_url(json.dumps({'title': title, 'artist': uploader,
                                       'duration': meta['duration']}, ensure_ascii=False))
 
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🎵 Скачать музыку", callback_data=f"dl_audio|{url_key}"),
-            InlineKeyboardButton("🎬 Скачать видео", callback_data=f"dl_video|{url_key}"),
+            InlineKeyboardButton("🎵 Скачать музыку", callback_data=f"dl_audio|{meta_key}"),
+            InlineKeyboardButton("🎬 Скачать видео", callback_data=f"dl_video|{meta_key}"),
         ],
-        [InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")],
     ])
 
     await safe_edit(
         msg,
-        f"✅ <b>Трек найден!</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"✅ <b>Трек найден!</b>\n\n"
         f"🎵 <b>{title}</b>\n"
-        f"👤 {uploader}\n"
-        f"⏱ {dur}  •  {src}",
+        f"👤 {uploader}",
         parse_mode="HTML",
         reply_markup=kb
     )
@@ -1219,19 +1218,33 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     # ── Скачать музыку по кнопке ──────────────────────────────────────────────
     if data.startswith("dl_audio|"):
-        url = get_stored(data.split("|", 1)[1])
-        try: await cb.edit_message_text("⏳ <b>Скачиваю музыку...</b>", parse_mode="HTML")
+        raw = get_stored(data.split("|", 1)[1])
+        try:
+            meta = json.loads(raw)
+            url = meta['url']
+            meta_title = meta.get('title', '')
+            meta_uploader = meta.get('uploader', '')
+            meta_duration = meta.get('duration', 0)
+        except:
+            url = raw; meta_title = ''; meta_uploader = ''; meta_duration = 0
+
+        try: await cb.edit_message_text("⏳ <b>Скачиваю...</b>", parse_mode="HTML")
         except: pass
-        loop = asyncio.get_event_loop()
+
         result = await asyncio.wait_for(
-            loop.run_in_executor(executor, _download_audio, url), timeout=120)
+            asyncio.get_event_loop().run_in_executor(executor, _download_audio, url), timeout=120)
         if not result or not os.path.exists(result.get('file', '')):
             try: await cb.edit_message_text(t(uid, 'not_found'), parse_mode="HTML")
             except: pass
             return
-        title = result['title']; uploader = result['uploader']
+
+        # Используем title/uploader из мета (они правильные), не из SC файла
+        title = meta_title or result['title']
+        uploader = meta_uploader or result['uploader']
+        duration = meta_duration or result['duration']
+
         save_key = store_url(json.dumps({'title': title, 'artist': uploader,
-                                          'duration': result['duration']}, ensure_ascii=False))
+                                          'duration': duration}, ensure_ascii=False))
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(t(uid, 'lib_save_btn'), callback_data=f"lib_save|{save_key}")]])
         try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
         except: pass
@@ -1241,11 +1254,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 sent = await cb.message.reply_audio(
                     InputFile(f, filename='audio.mp3'),
                     title=title, performer=uploader,
-                    caption=f"🎵 <b>{title}</b>\n👤 {uploader}  •  {src_emoji(result['source'])}\n⏱ {fmt_dur(result['duration'])}",
+                    caption=f"🎵 <b>{title}</b>\n👤 {uploader}",
                     parse_mode="HTML", reply_markup=kb)
             if sent and sent.audio:
                 _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
-                                    'file_id': sent.audio.file_id, 'duration': result['duration']}
+                                    'file_id': sent.audio.file_id, 'duration': duration}
             try: await cb.message.delete()
             except: pass
         except Exception as ex:
@@ -1259,24 +1272,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # ── Скачать видео по кнопке ───────────────────────────────────────────────
     if data.startswith("dl_video|"):
-        url = get_stored(data.split("|", 1)[1])
+        raw = get_stored(data.split("|", 1)[1])
+        try:
+            meta = json.loads(raw)
+            url = meta['url']
+            meta_title = meta.get('title', '')
+            meta_uploader = meta.get('uploader', '')
+        except:
+            url = raw; meta_title = ''; meta_uploader = ''
+
         try: await cb.edit_message_text("⏳ <b>Скачиваю видео...</b>", parse_mode="HTML")
         except: pass
-        loop = asyncio.get_event_loop()
         result = await asyncio.wait_for(
-            loop.run_in_executor(executor, _download_video, url), timeout=120)
+            asyncio.get_event_loop().run_in_executor(executor, _download_video, url), timeout=120)
         if not result or not os.path.exists(result.get('file', '')):
             try: await cb.edit_message_text(t(uid, 'not_found'), parse_mode="HTML")
             except: pass
             return
-        title = result['title']; uploader = result['uploader']
+        title = meta_title or result['title']
+        uploader = meta_uploader or result['uploader']
         try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
         except: pass
         try:
             with open(result['file'], 'rb') as f:
-                await cb.message.reply_video(
-                    f,
-                    caption=f"🎬 <b>{title}</b>\n👤 {uploader}  •  {src_emoji(result['source'])}\n⏱ {fmt_dur(result['duration'])}",
+                await cb.message.reply_video(f,
+                    caption=f"🎬 <b>{title}</b>\n👤 {uploader}",
                     parse_mode="HTML")
             try: await cb.message.delete()
             except: pass
