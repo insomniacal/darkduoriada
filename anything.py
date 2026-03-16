@@ -591,34 +591,29 @@ def _download_audio(query_or_url):
         opts = {
             **BASE_OPTS,
             **(cookie_opts if not is_sc else {}),
-            # Только аудио форматы, максимум 50MB
-            'format': 'bestaudio[filesize<50M]/bestaudio/best[filesize<50M]',
+            'format': 'bestaudio[filesize<50M]/bestaudio/best[filesize<50M]/best',
             'outtmpl': f'{out}.%(ext)s',
             'ignoreerrors': True,
-            'match_filter': yt_dlp.utils.match_filter_func('duration < 1800'),  # max 30 минут
         }
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(source, download=True)
 
-            if not info or not isinstance(info, dict):
-                log.warning(f"_download_audio [{source}]: no info dict")
-                continue
-
-            entries = info.get('entries', None)
-            if entries is not None:
-                entries = [e for e in entries if e and isinstance(e, dict)]
-                if not entries:
-                    log.warning(f"_download_audio [{source}]: empty entries")
-                    continue
-                e = entries[0]
-            else:
-                e = info
-
+            # Сначала проверяем файл на диске — он важнее чем info
             files = glob.glob(f'{out}.*')
             if not files:
                 log.warning(f"_download_audio [{source}]: no file after download")
                 continue
+
+            # Извлекаем метаданные из info
+            e = {}
+            if info and isinstance(info, dict):
+                entries = info.get('entries', None)
+                if entries is not None:
+                    valid = [x for x in entries if x and isinstance(x, dict)]
+                    e = valid[0] if valid else {}
+                else:
+                    e = info
 
             file = files[0]
             if not file.endswith('.mp3'):
