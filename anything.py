@@ -959,12 +959,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
 
-    # ── Музыка ────────────────────────────────────────────────────────────────
+    # ── Музыка
     url_match = is_url(text)
     search_match = lower.startswith("найти ") or lower.startswith("find ")
     if not url_match and not search_match: return
 
-    # ── TikTok ────────────────────────────────────────────────────────────────
+   
     if url_match and is_tiktok(text):
         msg = await safe_reply(update, t(uid, 'processing'), parse_mode="HTML")
         if not msg: return
@@ -992,7 +992,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             aud_key = store_url(shazam_q)
             track_line = f"\n\n🎵 <b>{shazam_q}</b>"
             extra = []
-            # Если метаданные TikTok отличаются от Shazam — предлагаем альтернативу
+            
             if meta and meta.get('query') and meta['query'].lower() != shazam_q.lower():
                 alt_key = store_url(meta['query'])
                 extra.append([InlineKeyboardButton(f"🔄 {meta['artist']} — {meta['title']}", callback_data=f"audio|{alt_key}")])
@@ -1017,7 +1017,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="HTML", reply_markup=kb)
         return
 
-    # ── Pinterest ─────────────────────────────────────────────────────────────
+    # ── Pinterest
     if url_match and is_pinterest(text):
         msg = await safe_reply(update, t(uid, 'processing'), parse_mode="HTML")
         if not msg: return
@@ -1033,7 +1033,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="HTML", reply_markup=InlineKeyboardMarkup(rows))
         return
 
-    # ── YouTube / SoundCloud / Spotify / поиск ────────────────────────────────
+    # ── YouTube / SoundCloud / Spotify / поиск 
     if search_match:
         query = text[6:].strip() if lower.startswith("найти ") else text[5:].strip()
     else:
@@ -1081,7 +1081,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
 
 
-# ── Callback кнопок ───────────────────────────────────────────────────────────
+# ── Callback кнопок
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cb = update.callback_query
     await cb.answer()
@@ -1089,7 +1089,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = cb.data
     loop = asyncio.get_event_loop()
 
-    # ── Выбор языка ───────────────────────────────────────────────────────────
+    # ── Выбор языка 
     if data.startswith("setlang|"):
         lang = data.split("|", 1)[1]
         set_lang(uid, lang)
@@ -1196,12 +1196,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("vid_trim_fmt|"):
-        # vid_trim_fmt|vid_key|start|end|format  (audio/video)
         parts = data.split("|")
         vid_path = get_stored(parts[1])
         start_sec = int(parts[2])
         end_sec = int(parts[3]) if parts[3] != 'end' else None
-        fmt = parts[4]  # 'audio' or 'video'
+        fmt = parts[4]  
 
         if not os.path.exists(vid_path):
             await cb.answer("❌ Файл не найден", show_alert=True)
@@ -1227,7 +1226,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         out_path = await loop.run_in_executor(executor, _do_trim)
 
-        # Удаляем исходное видео
+        
         if os.path.exists(vid_path):
             try: os.remove(vid_path)
             except: pass
@@ -1263,7 +1262,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
 
-    # ── Библиотека ────────────────────────────────────────────────────────────
+    
     if data == "lib_back":
         await show_library(cb, uid, edit=True)
         return
@@ -1327,7 +1326,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if data.startswith("lib_save|"):
-        # Показываем список папок для выбора
+      
         track_key = data.split("|", 1)[1]
         folders = lib_get_user(uid)
         if not folders:
@@ -1401,7 +1400,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
 
-    # ── Скачать аудио / видео ─────────────────────────────────────────────────
+    
     if '|' not in data: return
     action, key = data.split('|', 1)
     value = get_stored(key)
@@ -1478,7 +1477,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try: await cb.edit_message_text(f"❌ {ex}")
         except: pass
 
-# ── Видеофайл → выбор действия ───────────────────────────────────────────────
+
 async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.message.animation: return
     video = update.message.video or update.message.document
@@ -1502,12 +1501,12 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(msg, f"⚠️ Не удалось скачать файл.", parse_mode="HTML")
         return
 
-    # Сохраняем путь к видео в состоянии пользователя
+    
     vid_dur = getattr(video, 'duration', 0) or 0
-    # Для fallback поиска если Shazam не найдёт
+    
     vid_caption = update.message.caption or ''
     vid_filename = getattr(video, 'file_name', '') or ''
-    # Убираем расширение из имени файла
+   
     if vid_filename:
         vid_filename = os.path.splitext(vid_filename)[0]
     _user_state[uid] = {
@@ -1535,9 +1534,7 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=kb
     )
 
-# ── Запуск ────────────────────────────────────────────────────────────────────
 
-# Автоматически найти ffmpeg из imageio-ffmpeg если системный не найден
 try:
     import imageio_ffmpeg
     ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
@@ -1546,7 +1543,7 @@ try:
 except Exception:
     pass
 
-# Сбрасываем старую сессию при старте чтобы не было конфликта
+
 try:
     import urllib.request as _ur
     _ur.urlopen(f"https://api.telegram.org/bot{TOKEN}/deleteWebhook?drop_pending_updates=true", timeout=5)
