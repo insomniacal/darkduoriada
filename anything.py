@@ -334,6 +334,10 @@ def _db():
             is_new BOOLEAN DEFAULT TRUE
         )
     """)
+    # Добавляем is_new если колонки нет (миграция старой БД)
+    cur.execute("""
+        ALTER TABLE users ADD COLUMN IF NOT EXISTS is_new BOOLEAN DEFAULT TRUE
+    """)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS folders (
             id SERIAL PRIMARY KEY,
