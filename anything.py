@@ -659,8 +659,16 @@ def _download_audio(query_or_url):
         log.info(f"_download_audio trying: {source}")
         try:
             info = {}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(source, download=True) or {}
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(source, download=True) or {}
+            except Exception as dl_ex:
+                # SC иногда кидает JSON ошибку после успешного скачивания — проверяем файл
+                files = glob.glob(f'{out}.*')
+                if not files:
+                    log.warning(f"_download_audio [{source}]: {dl_ex}"); continue
+                log.warning(f"_download_audio [{source}] JSON err but file exists: {dl_ex}")
+                # info пустой — попробуем получить метаданные отдельно ниже
             files = glob.glob(f'{out}.*')
             if not files:
                 log.warning(f"_download_audio [{source}]: no file after download"); continue
