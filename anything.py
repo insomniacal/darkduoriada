@@ -8,9 +8,9 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 import psycopg2
 
 # ── Настройки ─────────────────────────────────────────────────────────────────
-TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"        # Telegram Bot Token (от @BotFather)
-DB_URL = "postgresql://postgres:.rep.1417228@db.yhxxgohuznubzaqebiyu.supabase.co:5432/postgres"       # postgresql://postgres:ПАРОЛЬ@db.ХХХХ.supabase.co:5432/postgres
-TMDB_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InloeHhnb2h1em51YnphcWViaXl1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzNDQ1ODksImV4cCI6MjA4ODkyMDU4OX0.HGcEVR5wMnPjvlR2IGiztJ8fMIZtn9QP9vFEaUre0Ew"   # themoviedb.org → Settings → API → API Read Access Token (длинный eyJ...)
+TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
+DB_URL = "postgresql://postgres.yhxxgohuznubzaqebiyu:.rep.1417228@aws-1-eu-west-1.pooler.supabase.com:6543/postgres"
+TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjZDBlZjI5NGIyYTIwZDllMmFjZmM3ZGI3NTIwYjBjMCIsIm5iZiI6MTc3MzI5NzMxMy4wNDYwMDAyLCJzdWIiOiI2OWIyNWVhMWQ5YWVlY2JjYjA2ODVhZjIiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.a9yQrtM93kLHa7LUnQViWKgvmIO_B-J2UKHBH0AFGeA"
 
 TEMP_DIR = "/tmp/musicbot"
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -18,9 +18,8 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 logging.basicConfig(format="%(asctime)s [%(levelname)s] %(message)s", level=logging.INFO)
 log = logging.getLogger(__name__)
 executor = ThreadPoolExecutor(max_workers=8)
-cache: dict = {}
-CACHE_MAX = 30
 _url_store: dict = {}
+_url_store_counter = [0]
 _trim_state: dict = {}
 _user_state: dict = {}
 
@@ -43,138 +42,92 @@ LANGS = {
 
 T = {
     'welcome_new': {
-        'ru': "👋 <b>Привет, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\nВыбери язык интерфейса:",
-        'en': "👋 <b>Hello, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\nChoose your language:",
-        'uz': "👋 <b>Salom, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\nTilni tanlang:",
-        'ua': "👋 <b>Привіт, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\nОберіть мову:",
-        'ar': "👋 <b>مرحباً، {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\nاختر لغتك:",
-        'tr': "👋 <b>Merhaba, {name}!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\nDil seçin:",
+        'ru': "👋 <b>Привет, {name}!</b>\n\nВыбери язык:",
+        'en': "👋 <b>Hello, {name}!</b>\n\nChoose your language:",
+        'uz': "👋 <b>Salom, {name}!</b>\n\nTilni tanlang:",
+        'ua': "👋 <b>Привіт, {name}!</b>\n\nОберіть мову:",
+        'ar': "👋 <b>مرحباً، {name}!</b>\n\nاختر لغتك:",
+        'tr': "👋 <b>Merhaba, {name}!</b>\n\nDil seçin:",
     },
     'lang_set': {
-        'ru': "✅ Язык установлен: 🇷🇺 Русский",
-        'en': "✅ Language set: 🇬🇧 English",
-        'uz': "✅ Til o'rnatildi: 🇺🇿 O'zbek",
-        'ua': "✅ Мову встановлено: 🇺🇦 Українська",
-        'ar': "✅ تم تعيين اللغة: 🇸🇦 العربية",
-        'tr': "✅ Dil ayarlandı: 🇹🇷 Türkçe",
+        'ru': "✅ Язык: 🇷🇺 Русский",
+        'en': "✅ Language: 🇬🇧 English",
+        'uz': "✅ Til: 🇺🇿 O'zbek",
+        'ua': "✅ Мова: 🇺🇦 Українська",
+        'ar': "✅ اللغة: 🇸🇦 العربية",
+        'tr': "✅ Dil: 🇹🇷 Türkçe",
     },
     'start_main': {
         'ru': (
-            "🎵 <b>С возвращением, {name}!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>Что умею:</b>\n\n"
-            "🔗 <b>Ссылка</b> — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-            "🔍 <b>Поиск:</b> <code>найти The Weeknd Blinding Lights</code>\n\n"
-            "✂️ <b>Обрезка</b> (после скачивания):\n"
-            "    <code>обрезать 0:30 0:45</code>\n\n"
-            "📁 <b>Библиотека</b> — /library\n\n"
-            "🎬 <b>Распознать трек</b> — пришли видео до 20MB\n\n"
-            "🌐 Сменить язык — /lang\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡️ Повторные запросы — мгновенно"
+            "🎵 <b>С возвращением, {name}!</b>\n\n"
+            "🔗 Ссылка — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
+            "🔍 Поиск: <code>найти The Weeknd Blinding Lights</code>\n"
+            "✂️ Обрезка: <code>обрезать 0:30 0:45</code>\n"
+            "📁 Библиотека — /library\n"
+            "🎬 Распознать трек — пришли видео до 20MB\n"
+            "🌐 Язык — /lang"
         ),
         'en': (
-            "🎵 <b>Welcome back, {name}!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>What I can do:</b>\n\n"
-            "🔗 <b>Link</b> — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-            "🔍 <b>Search:</b> <code>find The Weeknd Blinding Lights</code>\n\n"
-            "✂️ <b>Trim</b> (after download):\n"
-            "    <code>trim 0:30 0:45</code>\n\n"
-            "📁 <b>Library</b> — /library\n\n"
-            "🎬 <b>Recognize track</b> — send video up to 20MB\n\n"
-            "🌐 Change language — /lang\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡️ Repeated requests — instant"
+            "🎵 <b>Welcome back, {name}!</b>\n\n"
+            "🔗 Link — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
+            "🔍 Search: <code>find The Weeknd Blinding Lights</code>\n"
+            "✂️ Trim: <code>trim 0:30 0:45</code>\n"
+            "📁 Library — /library\n"
+            "🎬 Recognize track — send video up to 20MB\n"
+            "🌐 Language — /lang"
         ),
         'uz': (
-            "🎵 <b>Xush kelibsiz, {name}!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>Nima qila olaman:</b>\n\n"
-            "🔗 <b>Havola</b> — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-            "🔍 <b>Qidirish:</b> <code>topish The Weeknd Blinding Lights</code>\n\n"
-            "✂️ <b>Kesish</b> (yuklab olgandan keyin):\n"
-            "    <code>kesish 0:30 0:45</code>\n\n"
-            "📁 <b>Kutubxona</b> — /library\n\n"
-            "🎬 <b>Trekni aniqlash</b> — 20MB gacha video yuboring\n\n"
-            "🌐 Tilni o'zgartirish — /lang\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡️ Takroriy so'rovlar — darhol"
+            "🎵 <b>Xush kelibsiz, {name}!</b>\n\n"
+            "🔗 Havola — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
+            "🔍 Qidirish: <code>topish The Weeknd Blinding Lights</code>\n"
+            "✂️ Kesish: <code>kesish 0:30 0:45</code>\n"
+            "📁 Kutubxona — /library\n"
+            "🎬 Trekni aniqlash — 20MB gacha video yuboring\n"
+            "🌐 Til — /lang"
         ),
         'ua': (
-            "🎵 <b>З поверненням, {name}!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>Що вмію:</b>\n\n"
-            "🔗 <b>Посилання</b> — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-            "🔍 <b>Пошук:</b> <code>знайти The Weeknd Blinding Lights</code>\n\n"
-            "✂️ <b>Обрізка</b> (після завантаження):\n"
-            "    <code>обрізати 0:30 0:45</code>\n\n"
-            "📁 <b>Бібліотека</b> — /library\n\n"
-            "🎬 <b>Розпізнати трек</b> — надішли відео до 20MB\n\n"
-            "🌐 Змінити мову — /lang\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡️ Повторні запити — миттєво"
+            "🎵 <b>З поверненням, {name}!</b>\n\n"
+            "🔗 Посилання — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
+            "🔍 Пошук: <code>знайти The Weeknd Blinding Lights</code>\n"
+            "✂️ Обрізка: <code>обрізати 0:30 0:45</code>\n"
+            "📁 Бібліотека — /library\n"
+            "🎬 Розпізнати трек — надішли відео до 20MB\n"
+            "🌐 Мова — /lang"
         ),
         'ar': (
-            "🎵 <b>مرحباً بعودتك، {name}!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>ما أستطيع فعله:</b>\n\n"
-            "🔗 <b>رابط</b> — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-            "🔍 <b>بحث:</b> <code>ابحث The Weeknd Blinding Lights</code>\n\n"
-            "✂️ <b>قص</b> (بعد التنزيل):\n"
-            "    <code>قص 0:30 0:45</code>\n\n"
-            "📁 <b>المكتبة</b> — /library\n\n"
-            "🎬 <b>التعرف على الأغنية</b> — أرسل فيديو حتى 20MB\n\n"
-            "🌐 تغيير اللغة — /lang\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡️ الطلبات المتكررة — فورية"
+            "🎵 <b>مرحباً بعودتك، {name}!</b>\n\n"
+            "🔗 رابط — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
+            "🔍 بحث: <code>ابحث The Weeknd Blinding Lights</code>\n"
+            "✂️ قص: <code>قص 0:30 0:45</code>\n"
+            "📁 المكتبة — /library\n"
+            "🎬 التعرف على الأغنية — أرسل فيديو حتى 20MB\n"
+            "🌐 اللغة — /lang"
         ),
         'tr': (
-            "🎵 <b>Tekrar hoş geldin, {name}!</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "<b>Neler yapabilirim:</b>\n\n"
-            "🔗 <b>Bağlantı</b> — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n\n"
-            "🔍 <b>Arama:</b> <code>bul The Weeknd Blinding Lights</code>\n\n"
-            "✂️ <b>Kırp</b> (indirdikten sonra):\n"
-            "    <code>kırp 0:30 0:45</code>\n\n"
-            "📁 <b>Kütüphane</b> — /library\n\n"
-            "🎬 <b>Parçayı tanı</b> — 20MB'a kadar video gönder\n\n"
-            "🌐 Dil değiştir — /lang\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "⚡️ Tekrar istekler — anında"
+            "🎵 <b>Tekrar hoş geldin, {name}!</b>\n\n"
+            "🔗 Bağlantı — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
+            "🔍 Arama: <code>bul The Weeknd Blinding Lights</code>\n"
+            "✂️ Kırp: <code>kırp 0:30 0:45</code>\n"
+            "📁 Kütüphane — /library\n"
+            "🎬 Parçayı tanı — 20MB'a kadar video gönder\n"
+            "🌐 Dil — /lang"
         ),
-    },
-    'searching': {
-        'ru': '🔍 Ищу {q}...',
-        'en': '🔍 Searching {q}...',
-        'uz': '🔍 Qidirilmoqda {q}...',
-        'ua': '🔍 Шукаю {q}...',
-        'ar': '🔍 جاري البحث {q}...',
-        'tr': '🔍 Aranıyor {q}...',
-    },
-    'found': {
-        'ru': '✅ <b>Нашёл!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{title}</b>\n👤 {uploader}\n⏱ {dur}  •  {src}\n━━━━━━━━━━━━━━━━━━━━━━\n📤 Отправляю...',
-        'en': '✅ <b>Found!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{title}</b>\n👤 {uploader}\n⏱ {dur}  •  {src}\n━━━━━━━━━━━━━━━━━━━━━━\n📤 Sending...',
-        'uz': '✅ <b>Topildi!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{title}</b>\n👤 {uploader}\n⏱ {dur}  •  {src}\n━━━━━━━━━━━━━━━━━━━━━━\n📤 Yuborilmoqda...',
-        'ua': '✅ <b>Знайшов!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{title}</b>\n👤 {uploader}\n⏱ {dur}  •  {src}\n━━━━━━━━━━━━━━━━━━━━━━\n📤 Відправляю...',
-        'ar': '✅ <b>وجدت!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{title}</b>\n👤 {uploader}\n⏱ {dur}  •  {src}\n━━━━━━━━━━━━━━━━━━━━━━\n📤 جاري الإرسال...',
-        'tr': '✅ <b>Bulundu!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{title}</b>\n👤 {uploader}\n⏱ {dur}  •  {src}\n━━━━━━━━━━━━━━━━━━━━━━\n📤 Gönderiliyor...',
     },
     'not_found': {
         'ru': '😔 Ничего не найдено. Попробуй уточнить запрос.',
         'en': '😔 Nothing found. Try a more specific query.',
-        'uz': '😔 Hech narsa topilmadi. So\'rovni aniqlashtiring.',
+        'uz': "😔 Hech narsa topilmadi. So'rovni aniqlashtiring.",
         'ua': '😔 Нічого не знайдено. Спробуй уточнити запит.',
-        'ar': '😔 لم يتم العثور على شيء. حاول تحديد البحث.',
-        'tr': '😔 Hiçbir şey bulunamadı. Sorguyu detaylandırın.',
+        'ar': '😔 لم يتم العثور على شيء.',
+        'tr': '😔 Hiçbir şey bulunamadı.',
     },
     'timeout': {
         'ru': '⚠️ Превышено время ожидания. Попробуй ещё раз.',
         'en': '⚠️ Request timed out. Please try again.',
-        'uz': '⚠️ Vaqt tugadi. Qayta urinib ko\'ring.',
+        'uz': "⚠️ Vaqt tugadi. Qayta urinib ko'ring.",
         'ua': '⚠️ Час очікування вичерпано. Спробуй ще раз.',
-        'ar': '⚠️ انتهت مهلة الطلب. يرجى المحاولة مرة أخرى.',
-        'tr': '⚠️ İstek zaman aşımına uğradı. Lütfen tekrar deneyin.',
+        'ar': '⚠️ انتهت مهلة الطلب.',
+        'tr': '⚠️ İstek zaman aşımına uğradı.',
     },
     'processing': {
         'ru': '⏳ <b>Обрабатываю...</b>',
@@ -185,12 +138,12 @@ T = {
         'tr': '⏳ <b>İşleniyor...</b>',
     },
     'shazam_detecting': {
-        'ru': '🎵 <b>Определяю трек через Shazam...</b>',
-        'en': '🎵 <b>Detecting track via Shazam...</b>',
-        'uz': '🎵 <b>Shazam orqali trek aniqlanmoqda...</b>',
-        'ua': '🎵 <b>Визначаю трек через Shazam...</b>',
-        'ar': '🎵 <b>جاري التعرف على الأغنية عبر Shazam...</b>',
-        'tr': '🎵 <b>Shazam ile parça tespit ediliyor...</b>',
+        'ru': '🎵 <b>Определяю трек...</b>',
+        'en': '🎵 <b>Detecting track...</b>',
+        'uz': '🎵 <b>Trek aniqlanmoqda...</b>',
+        'ua': '🎵 <b>Визначаю трек...</b>',
+        'ar': '🎵 <b>جاري التعرف على الأغنية...</b>',
+        'tr': '🎵 <b>Parça tespit ediliyor...</b>',
     },
     'choose_format': {
         'ru': 'Выбери формат:',
@@ -199,22 +152,6 @@ T = {
         'ua': 'Обери формат:',
         'ar': 'اختر التنسيق:',
         'tr': 'Format seçin:',
-    },
-    'btn_similar': {
-        'ru': '🔀 Похожие',
-        'en': '🔀 Similar',
-        'uz': '🔀 O\'xshash',
-        'ua': '🔀 Схожі',
-        'ar': '🔀 مشابه',
-        'tr': '🔀 Benzer',
-    },
-    'btn_artist': {
-        'ru': '🎤 Ещё от исполнителя',
-        'en': '🎤 More by artist',
-        'uz': '🎤 Ijrochidan ko\'proq',
-        'ua': '🎤 Ще від виконавця',
-        'ar': '🎤 المزيد من الفنان',
-        'tr': '🎤 Sanatçıdan daha fazla',
     },
     'btn_save_lib': {
         'ru': '📁 Сохранить в библиотеку',
@@ -227,10 +164,10 @@ T = {
     'trim_no_track': {
         'ru': '⚠️ Нет трека для обрезки. Сначала скачай музыку.',
         'en': '⚠️ No track to trim. Download a track first.',
-        'uz': '⚠️ Kesish uchun trek yo\'q. Avval musiqa yuklab oling.',
-        'ua': '⚠️ Немає треку для обрізки. Спочатку завантаж музику.',
-        'ar': '⚠️ لا يوجد مقطع للقص. قم بتنزيل مقطع موسيقي أولاً.',
-        'tr': '⚠️ Kırpılacak parça yok. Önce müzik indirin.',
+        'uz': "⚠️ Kesish uchun trek yo'q.",
+        'ua': '⚠️ Немає треку для обрізки.',
+        'ar': '⚠️ لا يوجد مقطع للقص.',
+        'tr': '⚠️ Kırpılacak parça yok.',
     },
     'trimming': {
         'ru': '✂️ <b>Обрезаю...</b>',
@@ -243,42 +180,34 @@ T = {
     'trim_done': {
         'ru': '✅ Готово! ⏱ {s} → {e}\n📤 Отправляю...',
         'en': '✅ Done! ⏱ {s} → {e}\n📤 Sending...',
-        'uz': '✅ Tayyor! ⏱ {s} → {e}\n📤 Yuborilmoqda...',
-        'ua': '✅ Готово! ⏱ {s} → {e}\n📤 Відправляю...',
-        'ar': '✅ تم! ⏱ {s} → {e}\n📤 جاري الإرسال...',
-        'tr': '✅ Bitti! ⏱ {s} → {e}\n📤 Gönderiliyor...',
-    },
-    'cache_instant': {
-        'ru': '⚡️ <b>Мгновенно из кэша!</b>',
-        'en': '⚡️ <b>Instant from cache!</b>',
-        'uz': '⚡️ <b>Keshdan darhol!</b>',
-        'ua': '⚡️ <b>Миттєво з кешу!</b>',
-        'ar': '⚡️ <b>فوري من الذاكرة المؤقتة!</b>',
-        'tr': '⚡️ <b>Önbellekten anında!</b>',
+        'uz': '✅ Tayyor! ⏱ {s} → {e}',
+        'ua': '✅ Готово! ⏱ {s} → {e}',
+        'ar': '✅ تم! ⏱ {s} → {e}',
+        'tr': '✅ Bitti! ⏱ {s} → {e}',
     },
     'lib_title': {
-        'ru': '🎵 <b>Моя библиотека</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n',
-        'en': '🎵 <b>My Library</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n',
-        'uz': '🎵 <b>Mening kutubxonam</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n',
-        'ua': '🎵 <b>Моя бібліотека</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n',
-        'ar': '🎵 <b>مكتبتي</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n',
-        'tr': '🎵 <b>Kütüphanem</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n',
+        'ru': '🎵 <b>Моя библиотека</b>\n\n',
+        'en': '🎵 <b>My Library</b>\n\n',
+        'uz': '🎵 <b>Mening kutubxonam</b>\n\n',
+        'ua': '🎵 <b>Моя бібліотека</b>\n\n',
+        'ar': '🎵 <b>مكتبتي</b>\n\n',
+        'tr': '🎵 <b>Kütüphanem</b>\n\n',
     },
     'lib_empty': {
         'ru': 'Библиотека пуста.\nСоздай папку и добавляй треки!',
         'en': 'Library is empty.\nCreate a folder and add tracks!',
-        'uz': 'Kutubxona bo\'sh.\nPapka yarating va treklar qo\'shing!',
-        'ua': 'Бібліотека порожня.\nСтвори папку і додавай треки!',
-        'ar': 'المكتبة فارغة.\nأنشئ مجلداً وأضف المقاطع!',
-        'tr': 'Kütüphane boş.\nKlasör oluştur ve parça ekle!',
+        'uz': "Kutubxona bo'sh.",
+        'ua': 'Бібліотека порожня.',
+        'ar': 'المكتبة فارغة.',
+        'tr': 'Kütüphane boş.',
     },
     'lib_folders_count': {
         'ru': '📂 Папок: <b>{n}</b>\n\nВыбери папку:',
         'en': '📂 Folders: <b>{n}</b>\n\nChoose a folder:',
-        'uz': '📂 Papkalar: <b>{n}</b>\n\nPapkani tanlang:',
-        'ua': '📂 Папок: <b>{n}</b>\n\nОбери папку:',
-        'ar': '📂 المجلدات: <b>{n}</b>\n\nاختر مجلداً:',
-        'tr': '📂 Klasörler: <b>{n}</b>\n\nKlasör seçin:',
+        'uz': '📂 Papkalar: <b>{n}</b>',
+        'ua': '📂 Папок: <b>{n}</b>',
+        'ar': '📂 المجلدات: <b>{n}</b>',
+        'tr': '📂 Klasörler: <b>{n}</b>',
     },
     'btn_new_folder': {
         'ru': '➕ Создать папку',
@@ -297,28 +226,28 @@ T = {
         'tr': '◀️ Geri',
     },
     'create_folder_prompt': {
-        'ru': '📁 <b>Создание папки</b>\n\nНапиши название новой папки:',
-        'en': '📁 <b>Create folder</b>\n\nEnter the folder name:',
-        'uz': '📁 <b>Papka yaratish</b>\n\nYangi papka nomini kiriting:',
-        'ua': '📁 <b>Створення папки</b>\n\nНапиши назву нової папки:',
-        'ar': '📁 <b>إنشاء مجلد</b>\n\nأدخل اسم المجلد الجديد:',
-        'tr': '📁 <b>Klasör oluştur</b>\n\nYeni klasör adını girin:',
+        'ru': '📁 <b>Создание папки</b>\n\nНапиши название:',
+        'en': '📁 <b>Create folder</b>\n\nEnter the name:',
+        'uz': '📁 <b>Papka yaratish</b>\n\nNomini kiriting:',
+        'ua': '📁 <b>Створення папки</b>\n\nНапиши назву:',
+        'ar': '📁 <b>إنشاء مجلد</b>\n\nأدخل الاسم:',
+        'tr': '📁 <b>Klasör oluştur</b>\n\nAdı girin:',
     },
     'folder_created': {
-        'ru': '✅ Папка <b>«{name}»</b> создана!\n\nСкачай трек и нажми <b>📁 Сохранить в библиотеку</b>',
-        'en': '✅ Folder <b>«{name}»</b> created!\n\nDownload a track and tap <b>📁 Save to library</b>',
-        'uz': '✅ <b>«{name}»</b> papkasi yaratildi!\n\nTrekni yuklab oling va <b>📁 Kutubxonaga saqlash</b> tugmasini bosing',
-        'ua': '✅ Папку <b>«{name}»</b> створено!\n\nЗавантаж трек і натисни <b>📁 Зберегти до бібліотеки</b>',
-        'ar': '✅ تم إنشاء المجلد <b>«{name}»</b>!\n\nقم بتنزيل مقطع واضغط <b>📁 حفظ في المكتبة</b>',
-        'tr': '✅ <b>«{name}»</b> klasörü oluşturuldu!\n\nBir parça indirin ve <b>📁 Kütüphaneye kaydet</b> düğmesine basın',
+        'ru': '✅ Папка <b>«{name}»</b> создана!',
+        'en': '✅ Folder <b>«{name}»</b> created!',
+        'uz': '✅ <b>«{name}»</b> papkasi yaratildi!',
+        'ua': '✅ Папку <b>«{name}»</b> створено!',
+        'ar': '✅ تم إنشاء المجلد <b>«{name}»</b>!',
+        'tr': '✅ <b>«{name}»</b> klasörü oluşturuldu!',
     },
     'video_received': {
-        'ru': '🎬 <b>Видео получено</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nЧто хочешь сделать?',
-        'en': '🎬 <b>Video received</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nWhat do you want to do?',
-        'uz': '🎬 <b>Video qabul qilindi</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nNima qilmoqchisiz?',
-        'ua': '🎬 <b>Відео отримано</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nЩо хочеш зробити?',
-        'ar': '🎬 <b>تم استلام الفيديو</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nماذا تريد أن تفعل؟',
-        'tr': '🎬 <b>Video alındı</b>  ⏱ {dur}\n━━━━━━━━━━━━━━━━━━━━━━\n\nNe yapmak istiyorsunuz?',
+        'ru': '🎬 <b>Видео получено</b>  ⏱ {dur}\n\nЧто хочешь сделать?',
+        'en': '🎬 <b>Video received</b>  ⏱ {dur}\n\nWhat do you want to do?',
+        'uz': '🎬 <b>Video qabul qilindi</b>  ⏱ {dur}',
+        'ua': '🎬 <b>Відео отримано</b>  ⏱ {dur}',
+        'ar': '🎬 <b>تم استلام الفيديو</b>  ⏱ {dur}',
+        'tr': '🎬 <b>Video alındı</b>  ⏱ {dur}',
     },
     'btn_find_track': {
         'ru': '🔍 Найти трек',
@@ -337,28 +266,28 @@ T = {
         'tr': '✂️ Kırp',
     },
     'track_detected': {
-        'ru': '✅ <b>Трек определён!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{artist} — {title}</b>\n━━━━━━━━━━━━━━━━━━━━━━',
-        'en': '✅ <b>Track detected!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{artist} — {title}</b>\n━━━━━━━━━━━━━━━━━━━━━━',
-        'uz': '✅ <b>Trek aniqlandi!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{artist} — {title}</b>\n━━━━━━━━━━━━━━━━━━━━━━',
-        'ua': '✅ <b>Трек визначено!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{artist} — {title}</b>\n━━━━━━━━━━━━━━━━━━━━━━',
-        'ar': '✅ <b>تم التعرف على الأغنية!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{artist} — {title}</b>\n━━━━━━━━━━━━━━━━━━━━━━',
-        'tr': '✅ <b>Parça tespit edildi!</b>\n━━━━━━━━━━━━━━━━━━━━━━\n🎵 <b>{artist} — {title}</b>\n━━━━━━━━━━━━━━━━━━━━━━',
+        'ru': '✅ <b>Трек определён!</b>\n\n🎵 <b>{artist} — {title}</b>',
+        'en': '✅ <b>Track detected!</b>\n\n🎵 <b>{artist} — {title}</b>',
+        'uz': '✅ <b>Trek aniqlandi!</b>\n\n🎵 <b>{artist} — {title}</b>',
+        'ua': '✅ <b>Трек визначено!</b>\n\n🎵 <b>{artist} — {title}</b>',
+        'ar': '✅ <b>تم التعرف!</b>\n\n🎵 <b>{artist} — {title}</b>',
+        'tr': '✅ <b>Parça tespit edildi!</b>\n\n🎵 <b>{artist} — {title}</b>',
     },
     'btn_download_full': {
-        'ru': '⬇️ Скачать полную версию',
-        'en': '⬇️ Download full version',
-        'uz': '⬇️ To\'liq versiyani yuklab olish',
-        'ua': '⬇️ Завантажити повну версію',
-        'ar': '⬇️ تنزيل النسخة الكاملة',
-        'tr': '⬇️ Tam sürümü indir',
+        'ru': '⬇️ Скачать',
+        'en': '⬇️ Download',
+        'uz': '⬇️ Yuklab olish',
+        'ua': '⬇️ Завантажити',
+        'ar': '⬇️ تنزيل',
+        'tr': '⬇️ İndir',
     },
     'track_not_recognized': {
         'ru': '😔 <b>Трек не распознан</b>\n\nПопробуй видео с более чёткой музыкой.',
         'en': '😔 <b>Track not recognized</b>\n\nTry a video with clearer music.',
-        'uz': '😔 <b>Trek aniqlanmadi</b>\n\nAniqroq musiqali video sinab ko\'ring.',
-        'ua': '😔 <b>Трек не розпізнано</b>\n\nСпробуй відео з чіткішою музикою.',
-        'ar': '😔 <b>لم يتم التعرف على الأغنية</b>\n\nجرب مقطع فيديو بموسيقى أوضح.',
-        'tr': '😔 <b>Parça tanınamadı</b>\n\nDaha net müzikli bir video deneyin.',
+        'uz': '😔 <b>Trek aniqlanmadi</b>',
+        'ua': '😔 <b>Трек не розпізнано</b>',
+        'ar': '😔 <b>لم يتم التعرف على الأغنية</b>',
+        'tr': '😔 <b>Parça tanınamadı</b>',
     },
     'choose_lang': {
         'ru': '🌐 <b>Выбери язык:</b>',
@@ -387,7 +316,6 @@ T = {
 }
 
 def t(key, lang, **kwargs):
-    """Получить перевод по ключу и языку."""
     text = T.get(key, {}).get(lang) or T.get(key, {}).get('ru', '')
     if kwargs:
         try: text = text.format(**kwargs)
@@ -431,8 +359,7 @@ def db_get_user(uid: int) -> dict:
         cur = con.cursor()
         cur.execute("SELECT lang, is_new FROM users WHERE uid=%s", (uid,))
         row = cur.fetchone()
-        if row:
-            return {'lang': row[0], 'is_new': row[1]}
+        if row: return {'lang': row[0], 'is_new': row[1]}
         return {'lang': None, 'is_new': True}
     finally:
         con.close()
@@ -445,15 +372,6 @@ def db_set_lang(uid: int, lang: str):
             INSERT INTO users (uid, lang, is_new) VALUES (%s, %s, FALSE)
             ON CONFLICT (uid) DO UPDATE SET lang=EXCLUDED.lang, is_new=FALSE
         """, (uid, lang))
-        con.commit()
-    finally:
-        con.close()
-
-def db_mark_not_new(uid: int):
-    con = _db()
-    try:
-        cur = con.cursor()
-        cur.execute("UPDATE users SET is_new=FALSE WHERE uid=%s", (uid,))
         con.commit()
     finally:
         con.close()
@@ -471,7 +389,7 @@ def lib_get_user(uid: int) -> dict:
         result = {}
         for fid, fname in folders:
             cur.execute("SELECT title, artist, duration, file_id FROM tracks WHERE folder_id=%s ORDER BY id", (fid,))
-            result[fname] = [{'title': t[0], 'artist': t[1], 'duration': t[2], 'file_id': t[3]} for t in cur.fetchall()]
+            result[fname] = [{'title': r[0], 'artist': r[1], 'duration': r[2], 'file_id': r[3]} for r in cur.fetchall()]
         return result
     finally:
         con.close()
@@ -532,27 +450,24 @@ def is_url(tx): return bool(URL_PATTERN.search(tx))
 def is_pinterest(tx): return 'pinterest.com' in tx or 'pin.it' in tx
 def is_tiktok(tx): return 'tiktok.com' in tx
 def is_spotify(tx): return 'spotify.com' in tx
-def cache_key(q): return hashlib.md5(q.lower().strip().encode()).hexdigest()
 
 def store_url(v):
-    k = hashlib.md5(v.encode()).hexdigest()[:16]
+    _url_store_counter[0] += 1
+    k = str(_url_store_counter[0])
     _url_store[k] = v
     return k
 
 def get_stored(k): return _url_store.get(k, k)
-def get_cookie_opts(): return {'cookiefile': 'cookies.txt'} if os.path.exists('cookies.txt') else {}
+
+def get_cookie_opts():
+    for path in ['cookies.txt', '/app/cookies.txt', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')]:
+        if os.path.exists(path):
+            return {'cookiefile': path}
+    return {}
 
 def fmt_dur(s):
     s = int(s or 0)
     return f"{s//60}:{s%60:02d}"
-
-def src_emoji(s):
-    s = s.lower()
-    if 'youtube' in s: return '▶️ YouTube'
-    if 'soundcloud' in s: return '🔊 SoundCloud'
-    if 'tiktok' in s: return '🎵 TikTok'
-    if 'pinterest' in s: return '📌 Pinterest'
-    return '🌐 Web'
 
 def clean_q(text):
     r = []
@@ -567,20 +482,21 @@ def clean_q(text):
     return c if c else text
 
 def clean_search_query(text):
-    """Убирает шумовые теги из поискового запроса."""
-    q = re.sub(
-        r'\s*[\(\[\{][^\)\]\}]*(slowed|reverb|sped up|nightcore|remix|edit|official|lyrics|video|hd|hq|4k|vevo)[^\)\]\}]*[\)\]\}]',
-        '', text, flags=re.IGNORECASE
+    """Убирает шумовые теги, восстанавливает цензурные слова."""
+    q = re.sub(r'f\*+k', 'fuck', text, flags=re.IGNORECASE)
+    q = re.sub(r's\*+t', 'shit', q, flags=re.IGNORECASE)
+    q = re.sub(r'f\*+d', 'fucked', q, flags=re.IGNORECASE)
+    q = re.sub(r'b\*+h', 'bitch', q, flags=re.IGNORECASE)
+    q = re.sub(r'a\*+e', 'asshole', q, flags=re.IGNORECASE)
+    noise = re.compile(
+        r'\s*[\(\[\{][^\)\]\}]*(slowed|reverb|sped up|nightcore|instrumental|remix|edit|version|official|lyrics|video|hd|hq|4k|vevo|feat|ft\.)[^\)\]\}]*[\)\]\}]',
+        re.IGNORECASE
     )
+    q = noise.sub('', q)
     q = re.sub(r'\s*[\(\[\{][^\)\]\}]*$', '', q)
+    q = re.sub(r'[*_|]+', '', q)
     q = ' '.join(q.split()).strip()
     return q if len(q) > 2 else text
-
-def resolve_url(url):
-    try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as resp: return resp.url
-    except: return url
 
 def parse_time(s):
     s = s.strip()
@@ -591,16 +507,6 @@ def parse_time(s):
         elif len(parts) == 3: return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
     except: pass
     return None
-
-def save_cache(ck, result):
-    global cache
-    if len(cache) >= CACHE_MAX:
-        old = cache.pop(next(iter(cache)))
-        f = old.get('file', '')
-        if f and os.path.exists(f):
-            try: os.remove(f)
-            except: pass
-    cache[ck] = result
 
 def tmpfile(name): return os.path.join(TEMP_DIR, name)
 
@@ -625,6 +531,24 @@ BASE_OPTS = {
     'noplaylist': True, 'concurrent_fragment_downloads': 4,
     'http_headers': {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'},
 }
+
+# ── ffmpeg через imageio_ffmpeg (для Railway) ─────────────────────────────────
+try:
+    import imageio_ffmpeg as _iff, shutil as _shutil
+    _ffmpeg_bin = _iff.get_ffmpeg_exe()
+    _shutil.copy2(_ffmpeg_bin, '/tmp/ffmpeg'); os.chmod('/tmp/ffmpeg', 0o755)
+    _shutil.copy2(_ffmpeg_bin, '/tmp/ffprobe'); os.chmod('/tmp/ffprobe', 0o755)
+    BASE_OPTS['ffmpeg_location'] = '/tmp'
+    os.environ['PATH'] = '/tmp:' + os.environ.get('PATH', '')
+    log.info(f"ffmpeg ready at /tmp, ffprobe exists: {os.path.exists('/tmp/ffprobe')}")
+    log.info(f"ffmpeg найден: {_ffmpeg_bin}")
+except Exception as _ex:
+    log.warning(f"imageio_ffmpeg not found: {_ex}")
+
+# ── Поиск куки ────────────────────────────────────────────────────────────────
+_cookie_paths = ['cookies.txt', '/app/cookies.txt', os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookies.txt')]
+_found_cookie = next((p for p in _cookie_paths if os.path.exists(p)), None)
+log.info(f"cookies.txt: {_found_cookie or 'NOT FOUND'}")
 
 # ── Скачивание ────────────────────────────────────────────────────────────────
 def _get_spotify_query(url):
@@ -652,22 +576,28 @@ def _get_track_meta(url):
     return None
 
 def _shazam_identify_tiktok(tiktok_url):
-    import asyncio as _a
-    pid = os.getpid()
-    tmp = tmpfile(f'shazam_tt_{pid}.mp3')
+    import asyncio as _a, glob, uuid
+    uid_str = uuid.uuid4().hex[:12]
+    base = tmpfile(f'shazam_tt_{uid_str}')
     opts = {
         **BASE_OPTS, **get_cookie_opts(), 'format': 'bestaudio/best',
-        'outtmpl': tmpfile(f'shazam_tt_{pid}.%(ext)s'),
-        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '128'}],
-        'postprocessor_args': ['-t', '30'],
+        'outtmpl': f'{base}.%(ext)s',
     }
+    tmp = None; wav = None
     try:
         with yt_dlp.YoutubeDL(opts) as ydl: ydl.extract_info(tiktok_url, download=True)
-        if not os.path.exists(tmp): return None
+        files = glob.glob(f'{base}.*')
+        if not files: return None
+        tmp = files[0]
+        wav = base + '_shazam.wav'
+        import subprocess
+        subprocess.run(['/tmp/ffmpeg', '-y', '-i', tmp, '-t', '30', '-ar', '44100', '-ac', '1', '-f', 'wav', wav],
+                       capture_output=True, timeout=30)
+        if not os.path.exists(wav) or os.path.getsize(wav) == 0: return None
         loop = _a.new_event_loop()
         try:
             shazam = Shazam()
-            result = loop.run_until_complete(shazam.recognize(tmp))
+            result = loop.run_until_complete(shazam.recognize(wav))
         finally: loop.close()
         if not result.get('matches'): return None
         track = result.get('track', {})
@@ -675,101 +605,232 @@ def _shazam_identify_tiktok(tiktok_url):
         return f"{a} {tx}".strip() if tx else None
     except Exception as ex: log.warning(f"_shazam_tiktok: {ex}")
     finally:
-        if os.path.exists(tmp):
-            try: os.remove(tmp)
-            except: pass
+        for f in [tmp, wav]:
+            if f and os.path.exists(f):
+                try: os.remove(f)
+                except: pass
     return None
 
+def _clean_title(title, filename, query):
+    """Чистим title если это имя файла SC (подчёркивания, хэш)."""
+    if not title or re.search(r'_\d{6,}', title) or title.endswith('.mp3'):
+        raw = re.sub(r'\.(mp3|mp4|wav|ogg|flac|m4a)$', '', filename or title or query, flags=re.IGNORECASE)
+        raw = re.sub(r'_\d{6,}$', '', raw)
+        raw = raw.replace('_', ' ').strip()
+        if len(raw) > 2: return raw
+    return title or query
+
 def _download_audio(query_or_url):
-    pid = os.getpid()
-    out = tmpfile(f'audio_{pid}')
-    opts = {
-        **BASE_OPTS, **get_cookie_opts(),
-        'format': 'bestaudio[filesize<50M]/bestaudio/best',
-        'outtmpl': f'{out}.%(ext)s',
-        'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
-    }
+    import glob, shutil, uuid
+    uid_str = uuid.uuid4().hex[:12]
+    out = tmpfile(f'audio_{uid_str}')
+    cookie_opts = get_cookie_opts()
+
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"ytsearch:{sq}", f"scsearch:{sq}"] if sq else []
-    elif is_url(query_or_url): sources = [query_or_url]
+        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+    elif is_url(query_or_url):
+        sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
+        q_clean = clean_search_query(q)
         sources = [f"scsearch:{q}", f"ytsearch:{q}"]
+        if q_clean != q and len(q_clean) > 2:
+            sources += [f"scsearch:{q_clean}", f"ytsearch:{q_clean}"]
+        log.info(f"_download_audio clean query: '{q}' → '{q_clean}'")
+
     for source in sources:
-        for attempt in range(2):
+        is_sc = source.startswith('scsearch:')
+        opts = {
+            **BASE_OPTS,
+            **(cookie_opts if not is_sc else {}),
+            'format': 'bestaudio/best',
+            'outtmpl': f'{out}.%(ext)s',
+            'postprocessors': [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}],
+        }
+        for f in glob.glob(f'{out}.*'):
+            try: os.remove(f)
+            except: pass
+        log.info(f"_download_audio trying: {source}")
+        try:
+            info = {}
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(source, download=True) or {}
+            files = glob.glob(f'{out}.*')
+            if not files:
+                log.warning(f"_download_audio [{source}]: no file after download"); continue
+            e = {}
             try:
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    info = ydl.extract_info(source, download=True)
-                    e = info['entries'][0] if 'entries' in info else info
-                    file = f'{out}.mp3'
-                    if os.path.exists(file):
-                        return {'type': 'audio', 'title': e.get('title', query_or_url),
-                                'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
-                                'source': e.get('extractor', ''), 'file': file}
-            except Exception as ex:
-                err = str(ex).lower()
-                if ('timed out' in err or 'timeout' in err) and attempt == 0: continue
-                log.warning(f"_download_audio: {ex}"); break
+                entries = info.get('entries', None)
+                if entries is not None:
+                    valid = [x for x in entries if x and isinstance(x, dict)]
+                    e = valid[0] if valid else {}
+                else:
+                    e = info
+            except: e = info
+            # Если метаданные пустые — запрашиваем отдельно
+            if not e.get('title'):
+                try:
+                    with yt_dlp.YoutubeDL({**BASE_OPTS, 'skip_download': True, 'quiet': True}) as ydl2:
+                        meta = ydl2.extract_info(source, download=False)
+                    if meta:
+                        entries2 = meta.get('entries', None)
+                        if entries2:
+                            valid2 = [x for x in entries2 if x and isinstance(x, dict)]
+                            if valid2: e = valid2[0]
+                        elif meta.get('title'): e = meta
+                except: pass
+
+            file = files[0]
+            if not file.endswith('.mp3'):
+                new_file = f'{out}.mp3'
+                shutil.move(file, new_file)
+                file = new_file
+
+            raw_title = e.get('title', '')
+            uploader = e.get('uploader') or e.get('channel') or e.get('uploader_id') or ''
+            # Чистим мусорное название файла SC
+            title = _clean_title(raw_title, os.path.basename(file), query_or_url)
+            # Убираем мусорный uploader (рандомные заглавные)
+            if uploader and re.match(r'^[A-Z0-9]{10,}$', uploader): uploader = ''
+            log.info(f"_download_audio OK: {title} | {uploader}")
+            return {
+                'type': 'audio', 'title': title,
+                'duration': e.get('duration', 0) or 0,
+                'uploader': uploader,
+                'source': e.get('extractor', ''),
+                'file': file
+            }
+        except Exception as ex:
+            log.warning(f"_download_audio [{source}]: {ex}")
+            for f in glob.glob(f'{out}.*'):
+                try: os.remove(f)
+                except: pass
+    return None
+
+def _search_track_meta(query_or_url):
+    """Ищет метаданные трека без скачивания."""
+    cookie_opts = get_cookie_opts()
+    if is_spotify(query_or_url):
+        sq = _get_spotify_query(query_or_url)
+        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+    elif is_url(query_or_url):
+        sources = [query_or_url]
+    else:
+        q = clean_q(query_or_url)
+        q_clean = clean_search_query(q)
+        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
+        if q_clean != q and len(q_clean) > 2:
+            sources += [f"scsearch:{q_clean}", f"ytsearch:{q_clean}"]
+    for source in sources:
+        is_sc = source.startswith('scsearch:')
+        opts = {**BASE_OPTS, **(cookie_opts if not is_sc else {}), 'skip_download': True, 'quiet': True}
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(source, download=False)
+            if not info: continue
+            entries = info.get('entries', None)
+            e = (entries[0] if entries else None) if entries is not None else info
+            if not e or not e.get('title'): continue
+            return {
+                'title': e.get('title', ''),
+                'uploader': e.get('uploader') or e.get('channel') or '',
+                'duration': e.get('duration', 0) or 0,
+                'source': e.get('extractor', ''),
+                'url': e.get('webpage_url') or e.get('url') or source,
+            }
+        except Exception as ex:
+            log.warning(f"_search_track_meta [{source}]: {ex}")
     return None
 
 def _download_video(url):
-    pid = os.getpid()
-    out = tmpfile(f'video_{pid}')
+    import uuid
+    uid_str = uuid.uuid4().hex[:12]
+    out = tmpfile(f'video_{uid_str}')
     opts = {
         **BASE_OPTS, **get_cookie_opts(),
         'format': 'bestvideo[height<=720][filesize<90M]+bestaudio/best[height<=720]/best',
         'outtmpl': f'{out}.%(ext)s', 'merge_output_format': 'mp4',
     }
-    for attempt in range(2):
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                e = info['entries'][0] if 'entries' in info else info
-                for ext in ['mp4', 'mkv', 'webm', 'mov']:
-                    path = f'{out}.{ext}'
-                    if os.path.exists(path):
-                        return {'type': 'video', 'title': e.get('title', 'video'),
-                                'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
-                                'source': e.get('extractor', ''), 'file': path}
-        except Exception as ex:
-            err = str(ex).lower()
-            if ('timed out' in err or 'timeout' in err) and attempt == 0: continue
-            log.warning(f"_download_video: {ex}"); break
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            e = info['entries'][0] if 'entries' in info else info
+            for ext in ['mp4', 'mkv', 'webm', 'mov']:
+                path = f'{out}.{ext}'
+                if os.path.exists(path):
+                    return {'type': 'video', 'title': e.get('title', 'video'),
+                            'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
+                            'source': e.get('extractor', ''), 'file': path}
+    except Exception as ex:
+        log.warning(f"_download_video: {ex}")
     return None
 
-def _search_similar(query, max_results=5):
+def _search_tracks_list(query, max_results=5):
     results = []
-    for source in [f"scsearch{max_results}:{query}", f"ytsearch{max_results}:{query}"]:
+    q = clean_q(query)
+    q_clean = clean_search_query(q)
+    for source in [f"ytsearch{max_results}:{q}", f"scsearch{max_results}:{q_clean}"]:
         try:
-            opts = {**BASE_OPTS, 'skip_download': True, 'extract_flat': True}
+            opts = {**BASE_OPTS, 'skip_download': True, 'extract_flat': True, 'quiet': True}
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(source, download=False)
-                for e in info.get('entries', []):
+                for e in (info.get('entries', []) if info else []):
                     if not e: continue
                     title = e.get('title', ''); url = e.get('url') or e.get('webpage_url', '')
-                    if title and url:
-                        results.append({'title': title, 'url': url, 'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', '') or e.get('channel', '')})
-                    if len(results) >= max_results: break
-        except Exception as ex: log.warning(f"_search_similar: {ex}")
+                    if title and url and len(results) < max_results:
+                        results.append({'title': title, 'url': url,
+                                        'duration': e.get('duration', 0) or 0,
+                                        'uploader': e.get('uploader') or e.get('channel', '')})
+        except Exception as ex: log.warning(f"_search_tracks_list [{source}]: {ex}")
         if len(results) >= max_results: break
     seen = set(); unique = []
     for r in results:
-        k = r['title'].lower()
+        k = r['title'].lower()[:40]
         if k not in seen: seen.add(k); unique.append(r)
     return unique[:max_results]
 
 def _extract_audio_for_shazam(video_path):
     out = video_path + '_shazam.mp3'
-    ret = os.system(f'ffmpeg -y -i "{video_path}" -t 30 -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
+    ret = os.system(f'/tmp/ffmpeg -y -i "{video_path}" -t 30 -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
     return out if ret == 0 and os.path.exists(out) else None
 
-def _trim_audio(src, start_sec, end_sec):
-    out = src.replace('.mp3', f'_trim_{start_sec}_{end_sec or "end"}.mp3')
-    dur_arg = f"-t {end_sec - start_sec}" if end_sec is not None else ""
-    cmd = f'ffmpeg -y -i "{src}" -ss {start_sec} {dur_arg} -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
-    ret = os.system(cmd)
-    return out if ret == 0 and os.path.exists(out) else None
+def _extract_audio_segment(video_path, start_sec, duration=20):
+    import uuid
+    out = tmpfile(f'shazam_seg_{uuid.uuid4().hex[:8]}.mp3')
+    ret = os.system(f'/tmp/ffmpeg -y -ss {start_sec} -i "{video_path}" -t {duration} -vn -ar 44100 -ac 2 -b:a 128k "{out}" -loglevel quiet')
+    return out if ret == 0 and os.path.exists(out) and os.path.getsize(out) > 1000 else None
+
+async def _recognize_shazam_best(video_path):
+    import subprocess
+    try:
+        r = subprocess.run(['/tmp/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', video_path],
+                           capture_output=True, text=True, timeout=10)
+        duration = float(json.loads(r.stdout).get('format', {}).get('duration', 60))
+    except: duration = 60
+    starts = [0, int(duration * 0.25), int(duration * 0.5)]
+    async def try_segment(start):
+        seg = await asyncio.get_event_loop().run_in_executor(executor, _extract_audio_segment, video_path, start)
+        if not seg: return None
+        try:
+            result = await asyncio.wait_for(Shazam().recognize(seg), timeout=20)
+            if result.get('matches'):
+                track = result.get('track', {})
+                score = result['matches'][0].get('score', 0) if result.get('matches') else 0
+                return {'title': track.get('title',''), 'artist': track.get('subtitle',''), 'score': score}
+        except: pass
+        finally:
+            if os.path.exists(seg):
+                try: os.remove(seg)
+                except: pass
+        return None
+    results = await asyncio.gather(*[try_segment(s) for s in starts], return_exceptions=True)
+    best = None
+    for r in results:
+        if isinstance(r, dict) and r.get('title'):
+            if best is None or r.get('score', 0) > best.get('score', 0):
+                best = r
+    return best
 
 async def _recognize_shazam(file_path):
     try:
@@ -782,93 +843,16 @@ async def _recognize_shazam(file_path):
     except Exception as ex: log.warning(f"Shazam: {ex}")
     return None
 
-# ── Библиотека UI ─────────────────────────────────────────────────────────────
-async def show_library(update_or_query, uid, lang, edit=False):
-    folders = lib_get_user(uid)
-    buttons = []
-    if folders:
-        for fname in folders:
-            count = len(folders[fname])
-            buttons.append([InlineKeyboardButton(f"📁 {fname}  ({count})", callback_data=f"lib_folder|{store_url(fname)}")])
-    buttons.append([InlineKeyboardButton(t('btn_new_folder', lang), callback_data="lib_new_folder")])
-    text = t('lib_title', lang)
-    if folders:
-        text += t('lib_folders_count', lang, n=len(folders))
-    else:
-        text += t('lib_empty', lang)
-    kb = InlineKeyboardMarkup(buttons)
-    if edit:
-        try: await update_or_query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
-        except: pass
-    else:
-        await update_or_query.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+def _trim_audio(src, start_sec, end_sec):
+    out = src.replace('.mp3', f'_trim_{start_sec}_{end_sec or "end"}.mp3')
+    dur_arg = f"-t {end_sec - start_sec}" if end_sec is not None else ""
+    cmd = f'/tmp/ffmpeg -y -i "{src}" -ss {start_sec} {dur_arg} -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
+    ret = os.system(cmd)
+    return out if ret == 0 and os.path.exists(out) else None
 
-async def show_folder(query, uid, lang, folder):
-    folders = lib_get_user(uid)
-    tracks = folders.get(folder, [])
-    buttons = []
-    for i, tr in enumerate(tracks):
-        dur = fmt_dur(tr.get('duration', 0))
-        buttons.append([
-            InlineKeyboardButton(f"🎵 {tr['title'][:28]}  {dur}", callback_data=f"lib_play|{store_url(folder)}|{i}"),
-            InlineKeyboardButton("🗑", callback_data=f"lib_del_track|{store_url(folder)}|{i}"),
-        ])
-    buttons.append([
-        InlineKeyboardButton("🗑 " + ("Удалить папку" if lang == 'ru' else "Delete folder" if lang == 'en' else "Klasörü sil" if lang == 'tr' else "O'chirish" if lang == 'uz' else "Видалити папку" if lang == 'ua' else "حذف المجلد"), callback_data=f"lib_del_folder|{store_url(folder)}"),
-        InlineKeyboardButton(t('btn_back', lang), callback_data="lib_back"),
-    ])
-    empty_hint = {
-        'ru': 'Папка пустая.\nСкачай трек и нажми 📁 Сохранить в библиотеку',
-        'en': 'Folder is empty.\nDownload a track and tap 📁 Save to library',
-        'uz': "Papka bo'sh.\nTrekni yuklab oling va 📁 Kutubxonaga saqlash tugmasini bosing",
-        'ua': 'Папка порожня.\nЗавантаж трек і натисни 📁 Зберегти до бібліотеки',
-        'ar': 'المجلد فارغ.\nقم بتنزيل مقطع واضغط 📁 حفظ في المكتبة',
-        'tr': "Klasör boş.\nBir parça indirin ve 📁 Kütüphaneye kaydet'e basın",
-    }
-    text = f"📁 <b>{folder}</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-    if tracks:
-        text += f"{'Треков' if lang=='ru' else 'Tracks' if lang=='en' else 'Treklar' if lang=='uz' else 'Треків' if lang=='ua' else 'المقاطع' if lang=='ar' else 'Parça'}: <b>{len(tracks)}</b>"
-    else:
-        text += empty_hint.get(lang, empty_hint['ru'])
-    try: await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-    except: pass
-
-# ── Поиск списка треков ───────────────────────────────────────────────────────
-def _search_tracks_list(query, max_results=5):
-    """Ищет несколько треков и возвращает список для выбора."""
-    results = []
-    q = clean_q(query)
-    q_clean = clean_search_query(q)
-    for source in [f"ytsearch{max_results}:{q}", f"scsearch{max_results}:{q_clean}"]:
-        try:
-            opts = {**BASE_OPTS, 'skip_download': True, 'extract_flat': True, 'quiet': True}
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(source, download=False)
-                entries = info.get('entries', []) if info else []
-                for e in entries:
-                    if not e: continue
-                    title = e.get('title', '')
-                    url = e.get('url') or e.get('webpage_url', '')
-                    dur = e.get('duration', 0) or 0
-                    uploader = e.get('uploader') or e.get('channel', '')
-                    if title and url and len(results) < max_results:
-                        results.append({'title': title, 'url': url, 'duration': dur, 'uploader': uploader})
-        except Exception as ex:
-            log.warning(f"_search_tracks_list [{source}]: {ex}")
-        if len(results) >= max_results:
-            break
-    seen = set(); unique = []
-    for r in results:
-        k = r['title'].lower()[:40]
-        if k not in seen:
-            seen.add(k); unique.append(r)
-    return unique[:max_results]
-
-# ── Поиск фильма/сериала/аниме через TMDB ────────────────────────────────────
+# ── TMDB поиск фильмов ────────────────────────────────────────────────────────
 def _search_media_tmdb(query):
-    """Ищет фильм/сериал/аниме по названию через TMDB API."""
-    if not TMDB_TOKEN:
-        return None
+    if not TMDB_TOKEN: return None
     headers = {'Authorization': f'Bearer {TMDB_TOKEN}', 'accept': 'application/json'}
     results_all = []
     for mt in ['movie', 'tv']:
@@ -887,8 +871,7 @@ def _search_media_tmdb(query):
     orig = best.get('original_title') or best.get('original_name', '')
     overview = (best.get('overview', '') or '')[:300]
     if len(best.get('overview', '')) > 300: overview += '...'
-    rating = best.get('vote_average', 0)
-    votes = best.get('vote_count', 0)
+    rating = best.get('vote_average', 0); votes = best.get('vote_count', 0)
     date = best.get('release_date') or best.get('first_air_date', '')
     year = date[:4] if date else '?'
     poster = best.get('poster_path', '')
@@ -900,26 +883,59 @@ def _search_media_tmdb(query):
             'rating': rating, 'vote_count': votes, 'overview': overview, 'poster_url': poster_url}
 
 async def _send_tmdb_result(message, result):
-    """Отправляет карточку фильма/сериала."""
     orig_line = f"\n🔤 <i>{result['original_title']}</i>" if result['original_title'] != result['title'] else ''
     caption = (
         f"{result['type']}  •  {result['year']}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
         f"🎬 <b>{result['title']}</b>{orig_line}\n"
-        f"⭐ {result['rating']:.1f}/10  ({result['vote_count']} голосов)\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"⭐ {result['rating']:.1f}/10  ({result['vote_count']} голосов)\n\n"
         f"📝 {result['overview']}"
     )
     if result['poster_url']:
         try:
-            await message.reply_photo(photo=result['poster_url'], caption=caption, parse_mode="HTML")
-            return
+            await message.reply_photo(photo=result['poster_url'], caption=caption, parse_mode="HTML"); return
         except: pass
     await message.reply_text(caption, parse_mode="HTML")
 
+# ── Библиотека UI ─────────────────────────────────────────────────────────────
+async def show_library(update_or_query, uid, lang, edit=False):
+    folders = lib_get_user(uid)
+    buttons = []
+    for fname in folders:
+        count = len(folders[fname])
+        buttons.append([InlineKeyboardButton(f"📁 {fname}  ({count})", callback_data=f"lib_folder|{store_url(fname)}")])
+    buttons.append([InlineKeyboardButton(t('btn_new_folder', lang), callback_data="lib_new_folder")])
+    text = t('lib_title', lang)
+    text += t('lib_folders_count', lang, n=len(folders)) if folders else t('lib_empty', lang)
+    kb = InlineKeyboardMarkup(buttons)
+    if edit:
+        try: await update_or_query.edit_message_text(text, parse_mode="HTML", reply_markup=kb)
+        except: pass
+    else:
+        await update_or_query.message.reply_text(text, parse_mode="HTML", reply_markup=kb)
+
+async def show_folder(query, uid, lang, folder):
+    folders = lib_get_user(uid)
+    tracks = folders.get(folder, [])
+    buttons = []
+    for i, tr in enumerate(tracks):
+        dur = fmt_dur(tr.get('duration', 0))
+        buttons.append([
+            InlineKeyboardButton(f"🎵 {tr['title'][:28]}  {dur}", callback_data=f"lib_play|{store_url(folder)}|{i}"),
+            InlineKeyboardButton("🗑", callback_data=f"lib_del_track|{store_url(folder)}|{i}"),
+        ])
+    del_label = {'ru': 'Удалить папку', 'en': 'Delete folder', 'tr': 'Klasörü sil', 'uz': "O'chirish", 'ua': 'Видалити папку', 'ar': 'حذف المجلد'}.get(lang, 'Delete folder')
+    buttons.append([
+        InlineKeyboardButton(f"🗑 {del_label}", callback_data=f"lib_del_folder|{store_url(folder)}"),
+        InlineKeyboardButton(t('btn_back', lang), callback_data="lib_back"),
+    ])
+    empty_hint = {'ru': 'Папка пустая.\nСкачай трек и нажми 📁 Сохранить', 'en': 'Folder is empty.\nDownload a track and tap 📁 Save'}.get(lang, 'Empty folder.')
+    text = f"📁 <b>{folder}</b>\n\n"
+    text += f"Треков: <b>{len(tracks)}</b>" if tracks else empty_hint
+    try: await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
+    except: pass
+
 # ── Команды ───────────────────────────────────────────────────────────────────
 def lang_keyboard():
-    """Клавиатура выбора языка."""
     rows = []
     items = list(LANGS.items())
     for i in range(0, len(items), 3):
@@ -933,106 +949,40 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     name = update.effective_user.first_name or "friend"
     user_info = db_get_user(uid)
-
     if user_info['is_new'] or user_info['lang'] is None:
-        # Первый запуск — показываем выбор языка
         lang = user_info.get('lang') or 'ru'
-        await update.message.reply_text(
-            t('welcome_new', lang, name=name),
-            parse_mode="HTML",
-            reply_markup=lang_keyboard()
-        )
+        await update.message.reply_text(t('welcome_new', lang, name=name), parse_mode="HTML", reply_markup=lang_keyboard())
     else:
-        # Повторный запуск — показываем меню на выбранном языке
         lang = user_info['lang']
-        await update.message.reply_text(
-            t('start_main', lang, name=name),
-            parse_mode="HTML"
-        )
+        await update.message.reply_text(t('start_main', lang, name=name), parse_mode="HTML")
 
 async def cmd_lang(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     lang = get_user_lang(uid)
-    await update.message.reply_text(
-        t('choose_lang', lang),
-        parse_mode="HTML",
-        reply_markup=lang_keyboard()
-    )
+    await update.message.reply_text(t('choose_lang', lang), parse_mode="HTML", reply_markup=lang_keyboard())
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = update.effective_user.id
     lang = get_user_lang(uid)
     help_texts = {
-        'ru': (
-            "📖 <b>Инструкция</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🔗 TikTok / Pinterest → выбери Аудио или Видео\n"
-            "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-            "🔍 <code>найти [исполнитель трек]</code>\n\n"
-            "✂️ После скачивания:\n"
-            "    <code>обрезать 0:30 0:45</code>\n"
-            "    <code>обрезать до 1:30</code>\n"
-            "    <code>обрезать с 0:30</code>\n\n"
-            "📁 /library — личная библиотека\n"
-            "🌐 /lang — сменить язык\n\n"
-            "🎬 Пришли видеофайл до 20MB → Shazam распознает"
-        ),
-        'en': (
-            "📖 <b>Help</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🔗 TikTok / Pinterest → choose Audio or Video\n"
-            "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-            "🔍 <code>find [artist track]</code>\n\n"
-            "✂️ After downloading:\n"
-            "    <code>trim 0:30 0:45</code>\n"
-            "    <code>trim to 1:30</code>\n"
-            "    <code>trim from 0:30</code>\n\n"
-            "📁 /library — personal library\n"
-            "🌐 /lang — change language\n\n"
-            "🎬 Send video up to 20MB → Shazam recognizes"
-        ),
-        'uz': (
-            "📖 <b>Qo'llanma</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🔗 TikTok / Pinterest → Audio yoki Video tanlang\n"
-            "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-            "🔍 <code>topish [ijrochi trek]</code>\n\n"
-            "✂️ Yuklab olgandan keyin:\n"
-            "    <code>kesish 0:30 0:45</code>\n\n"
-            "📁 /library — shaxsiy kutubxona\n"
-            "🌐 /lang — tilni o'zgartirish\n\n"
-            "🎬 20MB gacha video yuboring → Shazam aniqlaydi"
-        ),
-        'ua': (
-            "📖 <b>Інструкція</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🔗 TikTok / Pinterest → обери Аудіо або Відео\n"
-            "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-            "🔍 <code>знайти [виконавець трек]</code>\n\n"
-            "✂️ Після завантаження:\n"
-            "    <code>обрізати 0:30 0:45</code>\n\n"
-            "📁 /library — особиста бібліотека\n"
-            "🌐 /lang — змінити мову\n\n"
-            "🎬 Надішли відео до 20MB → Shazam розпізнає"
-        ),
-        'ar': (
-            "📖 <b>التعليمات</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🔗 TikTok / Pinterest → اختر صوت أو فيديو\n"
-            "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-            "🔍 <code>ابحث [فنان أغنية]</code>\n\n"
-            "✂️ بعد التنزيل:\n"
-            "    <code>قص 0:30 0:45</code>\n\n"
-            "📁 /library — المكتبة الشخصية\n"
-            "🌐 /lang — تغيير اللغة\n\n"
-            "🎬 أرسل فيديو حتى 20MB → سيتعرف Shazam عليه"
-        ),
-        'tr': (
-            "📖 <b>Yardım</b>\n━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "🔗 TikTok / Pinterest → Ses veya Video seç\n"
-            "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-            "🔍 <code>bul [sanatçı parça]</code>\n\n"
-            "✂️ İndirdikten sonra:\n"
-            "    <code>kırp 0:30 0:45</code>\n\n"
-            "📁 /library — kişisel kütüphane\n"
-            "🌐 /lang — dil değiştir\n\n"
-            "🎬 20MB'a kadar video gönder → Shazam tanır"
-        ),
+        'ru': ("📖 <b>Инструкция</b>\n\n"
+               "🔗 TikTok / Pinterest → Аудио или Видео\n"
+               "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
+               "🔍 <code>найти [исполнитель трек]</code>\n\n"
+               "✂️ После скачивания:\n"
+               "    <code>обрезать 0:30 0:45</code>\n\n"
+               "📁 /library — библиотека\n"
+               "🌐 /lang — язык\n\n"
+               "🎬 Пришли видео до 20MB → Shazam распознает"),
+        'en': ("📖 <b>Help</b>\n\n"
+               "🔗 TikTok / Pinterest → Audio or Video\n"
+               "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
+               "🔍 <code>find [artist track]</code>\n\n"
+               "✂️ After downloading:\n"
+               "    <code>trim 0:30 0:45</code>\n\n"
+               "📁 /library — library\n"
+               "🌐 /lang — language\n\n"
+               "🎬 Send video up to 20MB → Shazam recognizes"),
     }
     await update.message.reply_text(help_texts.get(lang, help_texts['ru']), parse_mode="HTML")
 
@@ -1054,7 +1004,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if state.get('action') == 'create_folder':
         folder_name = text.strip()
         if len(folder_name) > 50:
-            await safe_reply(update, "❌ " + ("Название слишком длинное (макс. 50 символов)." if lang == 'ru' else "Name too long (max 50 chars)."), parse_mode="HTML")
+            await safe_reply(update, "❌ Название слишком длинное (макс. 50 символов).")
             return
         lib_create_folder(uid, folder_name)
         _user_state.pop(uid, None)
@@ -1062,48 +1012,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_library(update, uid, lang)
         return
 
-    # ── Ожидаем время обрезки MP3 файла ──────────────────────────────────────
+    # ── Ожидаем время обрезки MP3 ─────────────────────────────────────────────
     if state.get('action') == 'mp3_trim_input':
         audio_path = state.get('audio_path', '')
         vid_dur = state.get('dur', 0)
         if not os.path.exists(audio_path):
             _user_state.pop(uid, None)
-            await safe_reply(update, "❌ Файл не найден. Пришли mp3 снова с подписью «обрежь».", parse_mode="HTML")
+            await safe_reply(update, "❌ Файл не найден. Пришли mp3 снова.")
             return
         parts = text.strip().split()
         if len(parts) != 2:
-            await safe_reply(update, "❌ Неверный формат.\n\nПример: <code>0:30 1:00</code> или <code>0:30 конец</code>", parse_mode="HTML")
-            return
+            await safe_reply(update, "❌ Формат: <code>0:30 1:00</code>", parse_mode="HTML"); return
         start_sec = parse_time(parts[0])
         end_raw = parts[1].lower()
-        end_sec = None if end_raw in ('конец', 'end', 'до конца') else parse_time(end_raw)
+        end_sec = None if end_raw in ('конец', 'end') else parse_time(end_raw)
         if start_sec is None:
-            await safe_reply(update, "❌ Неверный формат времени. Пример: <code>0:30 1:00</code>", parse_mode="HTML")
-            return
+            await safe_reply(update, "❌ Неверный формат. Пример: <code>0:30 1:00</code>", parse_mode="HTML"); return
         if end_sec is not None and end_sec <= start_sec:
-            await safe_reply(update, "❌ Конец должен быть больше начала.", parse_mode="HTML")
-            return
-        if end_sec is not None and vid_dur and end_sec > vid_dur:
-            end_sec = vid_dur
+            await safe_reply(update, "❌ Конец должен быть больше начала."); return
         msg = await safe_reply(update, "✂️ <b>Обрезаю...</b>", parse_mode="HTML")
         trimmed = await loop.run_in_executor(executor, _trim_audio, audio_path, start_sec, end_sec)
         if not trimmed:
-            await safe_edit(msg, "❌ Не удалось обрезать. Убедись что ffmpeg установлен.", parse_mode="HTML")
-            return
-        s_fmt = fmt_dur(start_sec)
-        e_fmt = fmt_dur(end_sec) if end_sec is not None else "конец"
+            await safe_edit(msg, "❌ Ошибка обрезки.", parse_mode="HTML"); return
+        s_fmt = fmt_dur(start_sec); e_fmt = fmt_dur(end_sec) if end_sec is not None else "конец"
         trim_info = _trim_state.get(uid, {})
-        title = trim_info.get('title', 'track')
-        performer = trim_info.get('uploader', '')
-        await safe_edit(msg, f"✅ Готово! ⏱ {s_fmt} → {e_fmt}\n📤 Отправляю...", parse_mode="HTML")
+        await safe_edit(msg, f"✅ Готово! ⏱ {s_fmt} → {e_fmt}", parse_mode="HTML")
         with open(trimmed, 'rb') as f:
-            await update.message.reply_audio(f, title=f"{title} [{s_fmt}-{e_fmt}]", performer=performer)
+            await update.message.reply_audio(f, title=f"{trim_info.get('title','track')} [{s_fmt}-{e_fmt}]",
+                                              performer=trim_info.get('uploader', ''))
         _user_state.pop(uid, None)
         try: await msg.delete()
         except: pass
         try: os.remove(trimmed)
         except: pass
-        # Исходный файл оставляем — вдруг захочет ещё раз обрезать
         return
 
     # ── Обрезка треков ────────────────────────────────────────────────────────
@@ -1113,10 +1054,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     m_from  = re.match(rf'^{re.escape(trim_kw)}\s+(?:с|from|dan|від|من|den)\s+(\S+)\s*$', lower)
 
     if m_range or m_to or m_from:
-        state = _trim_state.get(uid)
-        if not state or not os.path.exists(state.get('file', '')):
-            await safe_reply(update, t('trim_no_track', lang), parse_mode="HTML")
-            return
+        st = _trim_state.get(uid)
+        if not st or not os.path.exists(st.get('file', '')):
+            await safe_reply(update, t('trim_no_track', lang), parse_mode="HTML"); return
         if m_range:
             start_sec = parse_time(m_range.group(1)); end_sec = parse_time(m_range.group(2))
         elif m_to:
@@ -1124,19 +1064,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             start_sec = parse_time(m_from.group(1)); end_sec = None
         if start_sec is None:
-            await safe_reply(update, "❌ " + ("Неверный формат. Пример: обрезать 0:30 0:45" if lang == 'ru' else "Invalid format. Example: trim 0:30 0:45"), parse_mode="HTML")
-            return
+            await safe_reply(update, "❌ Неверный формат.", parse_mode="HTML"); return
         if end_sec is not None and end_sec <= start_sec:
-            await safe_reply(update, "❌ " + ("Конец должен быть больше начала." if lang == 'ru' else "End must be greater than start."), parse_mode="HTML")
-            return
+            await safe_reply(update, "❌ Конец должен быть больше начала."); return
         msg = await safe_reply(update, t('trimming', lang), parse_mode="HTML")
-        trimmed = await loop.run_in_executor(executor, _trim_audio, state['file'], start_sec, end_sec)
+        trimmed = await loop.run_in_executor(executor, _trim_audio, st['file'], start_sec, end_sec)
         if not trimmed:
             await safe_edit(msg, "❌ ffmpeg error", parse_mode="HTML"); return
         s_fmt = fmt_dur(start_sec); e_fmt = fmt_dur(end_sec) if end_sec else "end"
         await safe_edit(msg, t('trim_done', lang, s=s_fmt, e=e_fmt), parse_mode="HTML")
         with open(trimmed, 'rb') as f:
-            await update.message.reply_audio(f, title=f"{state['title']} [{s_fmt}-{e_fmt}]", performer=state.get('uploader', ''))
+            await update.message.reply_audio(f, title=f"{st['title']} [{s_fmt}-{e_fmt}]", performer=st.get('uploader', ''))
         try: await msg.delete()
         except: pass
         try: os.remove(trimmed)
@@ -1153,28 +1091,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if url_match and is_tiktok(text):
         msg = await safe_reply(update, t('processing', lang), parse_mode="HTML")
         if not msg: return
-        resolved = await loop.run_in_executor(executor, resolve_url, text)
-        tiktok_url = resolved if 'tiktok.com' in resolved else text
         await safe_edit(msg, t('shazam_detecting', lang), parse_mode="HTML")
         try:
-            shazam_q = await asyncio.wait_for(loop.run_in_executor(executor, _shazam_identify_tiktok, tiktok_url), timeout=45)
+            shazam_q = await asyncio.wait_for(loop.run_in_executor(executor, _shazam_identify_tiktok, text), timeout=45)
         except asyncio.TimeoutError: shazam_q = None
-        vid_key = store_url(tiktok_url)
+        vid_key = store_url(text)
         if shazam_q:
             aud_key = store_url(shazam_q)
             track_line = f"\n\n🎵 <b>{shazam_q}</b>"
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"), InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}")]])
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"),
+                                        InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}")]])
         else:
-            try: meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, tiktok_url), timeout=20)
+            try: meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, text), timeout=20)
             except: meta = None
             if meta and meta.get('query'):
                 aud_key = store_url(meta['query'])
                 track_line = f"\n\n🎵 <b>{meta['artist']} — {meta['title']}</b>"
-                kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"), InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}")]])
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{aud_key}"),
+                                            InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}")]])
             else:
                 track_line = ""
-                kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{vid_key}"), InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}")]])
-        await safe_edit(msg, f"📱 <b>TikTok</b>{track_line}\n\n━━━━━━━━━━━━━━━━━━━━━━\n{t('choose_format', lang)}", parse_mode="HTML", reply_markup=kb)
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{vid_key}"),
+                                            InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}")]])
+        await safe_edit(msg, f"📱 <b>TikTok</b>{track_line}\n\n{t('choose_format', lang)}", parse_mode="HTML", reply_markup=kb)
         return
 
     # ── Pinterest ─────────────────────────────────────────────────────────────
@@ -1188,82 +1127,49 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             track_line = f"\n\n🎵 <b>{meta['artist']} — {meta['title']}</b>"
             buttons.append(InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{store_url(meta['query'])}"))
         buttons.append(InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"))
-        await safe_edit(msg, f"📌 <b>Pinterest</b>{track_line}\n\n━━━━━━━━━━━━━━━━━━━━━━\n{t('choose_format', lang)}", parse_mode="HTML", reply_markup=InlineKeyboardMarkup([buttons]))
+        await safe_edit(msg, f"📌 <b>Pinterest</b>{track_line}\n\n{t('choose_format', lang)}",
+                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup([buttons]))
         return
 
-    # ── YouTube / SoundCloud / Spotify / поиск ────────────────────────────────
+    # ── Поиск / ссылка ────────────────────────────────────────────────────────
     query = text if url_match else text[len(search_kw):].strip()
-    ck = cache_key(query)
-    if ck in cache:
-        cached = cache[ck]
-        if os.path.exists(cached.get('file', '')):
-            msg = await safe_reply(update, t('cache_instant', lang), parse_mode="HTML")
-            with open(cached['file'], 'rb') as f:
-                await update.message.reply_audio(f, title=cached['title'], performer=cached['uploader'])
-            if msg:
-                try: await msg.delete()
-                except: pass
-            return
-        del cache[ck]
 
     # Для текстового поиска — показываем список 5 вариантов
     if search_match and not url_match:
-        msg = await safe_reply(update, f"🔍 <b>Ищу варианты...</b>", parse_mode="HTML")
+        msg = await safe_reply(update, "🔍 <b>Ищу варианты...</b>", parse_mode="HTML")
         if not msg: return
         try:
-            tracks = await asyncio.wait_for(
-                loop.run_in_executor(executor, _search_tracks_list, query, 5), timeout=30)
-        except asyncio.TimeoutError:
-            tracks = []
+            tracks = await asyncio.wait_for(loop.run_in_executor(executor, _search_tracks_list, query, 5), timeout=30)
+        except asyncio.TimeoutError: tracks = []
         if not tracks:
             await safe_edit(msg, t('not_found', lang), parse_mode="HTML"); return
-        # Строим список с кнопками
-        lines = []
-        buttons = []
+        lines = []; buttons = []
         for i, tr in enumerate(tracks, 1):
-            dur = fmt_dur(tr['duration']) if tr['duration'] else ''
-            dur_str = f"  ⏱{dur}" if dur else ''
-            lines.append(f"{i}. <b>{tr['title']}</b>\n    <i>{tr['uploader']}</i>{dur_str}")
-            t_key = store_url(tr['url'])
-            buttons.append([InlineKeyboardButton(f"⬇️ {i}. {tr['title'][:35]}", callback_data=f"audio|{t_key}")])
-        list_text = f"🎵 <b>Результаты поиска:</b> «{query}»\n━━━━━━━━━━━━━━━━━━━━━━\n\n" + "\n\n".join(lines)
+            dur = f"  ⏱{fmt_dur(tr['duration'])}" if tr['duration'] else ''
+            lines.append(f"{i}. <b>{tr['title']}</b>\n    <i>{tr['uploader']}</i>{dur}")
+            buttons.append([InlineKeyboardButton(f"⬇️ {i}. {tr['title'][:35]}", callback_data=f"audio|{store_url(tr['url'])}")])
+        list_text = f"🎵 <b>Результаты:</b> «{query}»\n\n" + "\n\n".join(lines)
         await safe_edit(msg, list_text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
         return
 
-    # Для ссылки — скачиваем сразу
-    display = "🔗"
-    msg = await safe_reply(update, t('searching', lang, q=display), parse_mode="HTML")
+    # Для ссылки — сначала мета, потом кнопки
+    msg = await safe_reply(update, "🔍 Ищу...", parse_mode="HTML")
     if not msg: return
-
     try:
-        result = await asyncio.wait_for(loop.run_in_executor(executor, _download_audio, query), timeout=90)
-    except asyncio.TimeoutError:
-        await safe_edit(msg, t('timeout', lang), parse_mode="HTML"); return
-
-    if not result or not os.path.exists(result.get('file', '')):
+        meta = await asyncio.wait_for(loop.run_in_executor(executor, _search_track_meta, query), timeout=30)
+    except asyncio.TimeoutError: meta = None
+    if not meta:
         await safe_edit(msg, t('not_found', lang), parse_mode="HTML"); return
 
-    try:
-        title = result['title']; uploader = result['uploader']
-        save_key = store_url(json.dumps({'title': title, 'artist': uploader, 'duration': result['duration']}, ensure_ascii=False))
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")],
-        ])
-        await safe_edit(msg, t('found', lang, title=title, uploader=uploader, dur=fmt_dur(result['duration']), src=src_emoji(result['source'])), parse_mode="HTML")
-        sent = None
-        with open(result['file'], 'rb') as f:
-            sent = await update.message.reply_audio(f, title=title, performer=uploader)
-        if sent and sent.audio:
-            _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader, 'file_id': sent.audio.file_id, 'duration': result['duration']}
-        try: os.remove(result['file'])
-        except: pass
-        await update.message.reply_text(f"🎵 <b>{title}</b>", parse_mode="HTML", reply_markup=kb)
-        save_cache(ck, result)
-        try: await msg.delete()
-        except: pass
-    except Exception as ex:
-        log.error(f"handle_message: {ex}")
-        await safe_edit(msg, f"⚠️ <code>{ex}</code>", parse_mode="HTML")
+    title = meta['title']; uploader = meta['uploader']
+    meta_key = store_url(json.dumps({'url': meta['url'], 'title': title, 'uploader': uploader,
+                                      'duration': meta['duration']}, ensure_ascii=False))
+    kb = InlineKeyboardMarkup([[
+        InlineKeyboardButton("🎵 Скачать музыку", callback_data=f"dl_audio|{meta_key}"),
+        InlineKeyboardButton("🎬 Скачать видео", callback_data=f"dl_video|{meta_key}"),
+    ]])
+    await safe_edit(msg, f"✅ <b>Трек найден!</b>\n\n🎵 <b>{title}</b>\n👤 {uploader}",
+                    parse_mode="HTML", reply_markup=kb)
 
 # ── Callback кнопок ───────────────────────────────────────────────────────────
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1274,16 +1180,89 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = cb.data
     loop = asyncio.get_event_loop()
 
-    # ── Установка языка ───────────────────────────────────────────────────────
+    # ── Язык ──────────────────────────────────────────────────────────────────
     if data.startswith("setlang|"):
         new_lang = data.split("|", 1)[1]
         if new_lang not in LANGS: return
         db_set_lang(uid, new_lang)
-        flag, lname = LANGS[new_lang]
         try: await cb.edit_message_text(t('lang_set', new_lang), parse_mode="HTML")
         except: pass
         name = update.effective_user.first_name or "friend"
         await cb.message.reply_text(t('start_main', new_lang, name=name), parse_mode="HTML")
+        return
+
+    # ── Скачать музыку (новый флоу с мета) ───────────────────────────────────
+    if data.startswith("dl_audio|"):
+        raw = get_stored(data.split("|", 1)[1])
+        try:
+            meta = json.loads(raw)
+            url = meta['url']; meta_title = meta.get('title', ''); meta_uploader = meta.get('uploader', '')
+            meta_duration = meta.get('duration', 0)
+        except: url = raw; meta_title = ''; meta_uploader = ''; meta_duration = 0
+        try: await cb.edit_message_text("⏳ <b>Скачиваю...</b>", parse_mode="HTML")
+        except: pass
+        result = await asyncio.wait_for(loop.run_in_executor(executor, _download_audio, url), timeout=120)
+        if not result or not os.path.exists(result.get('file', '')):
+            try: await cb.edit_message_text(t('not_found', lang), parse_mode="HTML")
+            except: pass
+            return
+        title = meta_title or result['title']
+        uploader = meta_uploader or result['uploader']
+        duration = meta_duration or result['duration']
+        save_key = store_url(json.dumps({'title': title, 'artist': uploader, 'duration': duration}, ensure_ascii=False))
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")]])
+        try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
+        except: pass
+        try:
+            from telegram import InputFile
+            with open(result['file'], 'rb') as f:
+                sent = await cb.message.reply_audio(InputFile(f, filename='audio.mp3'),
+                                                    title=title, performer=uploader,
+                                                    caption=f"<b>{title}</b>\n{uploader}",
+                                                    parse_mode="HTML", reply_markup=kb)
+            if sent and sent.audio:
+                _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
+                                    'file_id': sent.audio.file_id, 'duration': duration}
+            try: await cb.message.delete()
+            except: pass
+        except Exception as ex:
+            log.error(f"dl_audio: {ex}")
+            try: await cb.edit_message_text(f"⚠️ {ex}", parse_mode="HTML")
+            except: pass
+        finally:
+            try: os.remove(result['file'])
+            except: pass
+        return
+
+    # ── Скачать видео (новый флоу с мета) ────────────────────────────────────
+    if data.startswith("dl_video|"):
+        raw = get_stored(data.split("|", 1)[1])
+        try:
+            meta = json.loads(raw)
+            url = meta['url']; meta_title = meta.get('title', ''); meta_uploader = meta.get('uploader', '')
+        except: url = raw; meta_title = ''; meta_uploader = ''
+        try: await cb.edit_message_text("⏳ <b>Скачиваю видео...</b>", parse_mode="HTML")
+        except: pass
+        result = await asyncio.wait_for(loop.run_in_executor(executor, _download_video, url), timeout=120)
+        if not result or not os.path.exists(result.get('file', '')):
+            try: await cb.edit_message_text(t('not_found', lang), parse_mode="HTML")
+            except: pass
+            return
+        title = meta_title or result['title']; uploader = meta_uploader or result['uploader']
+        try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
+        except: pass
+        try:
+            with open(result['file'], 'rb') as f:
+                await cb.message.reply_video(f, caption=f"<b>{title}</b>\n{uploader}", parse_mode="HTML")
+            try: await cb.message.delete()
+            except: pass
+        except Exception as ex:
+            log.error(f"dl_video: {ex}")
+            try: await cb.edit_message_text(f"⚠️ {ex}", parse_mode="HTML")
+            except: pass
+        finally:
+            try: os.remove(result['file'])
+            except: pass
         return
 
     # ── Shazam из видео ───────────────────────────────────────────────────────
@@ -1293,18 +1272,9 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await cb.answer("❌ File not found", show_alert=True); return
         try: await cb.edit_message_text(t('shazam_detecting', lang), parse_mode="HTML")
         except: pass
-        aud_path = await loop.run_in_executor(executor, _extract_audio_for_shazam, vid_path)
-        if not aud_path:
-            try: await cb.edit_message_text("⚠️ ffmpeg error", parse_mode="HTML")
-            except: pass
-            return
         try:
-            track = await asyncio.wait_for(_recognize_shazam(aud_path), timeout=30)
+            track = await asyncio.wait_for(_recognize_shazam_best(vid_path), timeout=60)
         except asyncio.TimeoutError: track = None
-        finally:
-            if os.path.exists(aud_path):
-                try: os.remove(aud_path)
-                except: pass
         if os.path.exists(vid_path):
             try: os.remove(vid_path)
             except: pass
@@ -1313,10 +1283,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try: await cb.edit_message_text(t('track_not_recognized', lang), parse_mode="HTML")
             except: pass
             return
-        q_key = store_url(track['query'])
+        q_key = store_url(f"{track['artist']} {track['title']}")
         kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_download_full', lang), callback_data=f"audio|{q_key}")]])
         try:
-            await cb.edit_message_text(t('track_detected', lang, artist=track['artist'], title=track['title']), parse_mode="HTML", reply_markup=kb)
+            await cb.edit_message_text(t('track_detected', lang, artist=track['artist'], title=track['title']),
+                                       parse_mode="HTML", reply_markup=kb)
         except: pass
         return
 
@@ -1324,23 +1295,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         vid_path = get_stored(data.split("|", 1)[1])
         if not os.path.exists(vid_path):
             await cb.answer("❌ File not found", show_alert=True); return
-        state = _user_state.get(uid, {})
-        vid_dur = state.get('vid_dur', 0)
+        state = _user_state.get(uid, {}); vid_dur = state.get('vid_dur', 0)
         _user_state[uid] = {'action': 'trim_input', 'vid_path': vid_path, 'vid_dur': vid_dur}
-        trim_prompts = {
-            'ru': f"✂️ <b>Обрезка</b>  ⏱ {fmt_dur(vid_dur)}\n\nНапиши: <code>начало конец</code>\nПример: <code>0:05 0:10</code>",
-            'en': f"✂️ <b>Trim</b>  ⏱ {fmt_dur(vid_dur)}\n\nWrite: <code>start end</code>\nExample: <code>0:05 0:10</code>",
-            'uz': f"✂️ <b>Kesish</b>  ⏱ {fmt_dur(vid_dur)}\n\nYozing: <code>boshlanish tugash</code>\nMisol: <code>0:05 0:10</code>",
-            'ua': f"✂️ <b>Обрізка</b>  ⏱ {fmt_dur(vid_dur)}\n\nНапиши: <code>початок кінець</code>\nПриклад: <code>0:05 0:10</code>",
-            'ar': f"✂️ <b>قص</b>  ⏱ {fmt_dur(vid_dur)}\n\nاكتب: <code>البداية النهاية</code>\nمثال: <code>0:05 0:10</code>",
-            'tr': f"✂️ <b>Kırp</b>  ⏱ {fmt_dur(vid_dur)}\n\nYaz: <code>başlangıç bitiş</code>\nÖrnek: <code>0:05 0:10</code>",
-        }
+        prompt = f"✂️ <b>Обрезка</b>  ⏱ {fmt_dur(vid_dur)}\n\nНапиши: <code>начало конец</code>\nПример: <code>0:05 0:10</code>"
         try:
-            await cb.edit_message_text(
-                trim_prompts.get(lang, trim_prompts['ru']),
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_back', lang), callback_data=f"vid_back|{store_url(vid_path)}")]])
-            )
+            await cb.edit_message_text(prompt, parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_back', lang), callback_data=f"vid_back|{store_url(vid_path)}")]]))
         except: pass
         return
 
@@ -1350,11 +1310,11 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _user_state[uid] = {'action': 'video_menu', 'vid_path': vid_path, 'vid_dur': vid_dur}
         vid_key = store_url(vid_path)
         try:
-            await cb.edit_message_text(
-                t('video_received', lang, dur=fmt_dur(vid_dur)),
-                parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_find_track', lang), callback_data=f"vid_shazam|{vid_key}"), InlineKeyboardButton(t('btn_trim_video', lang), callback_data=f"vid_trim|{vid_key}")]])
-            )
+            await cb.edit_message_text(t('video_received', lang, dur=fmt_dur(vid_dur)), parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(t('btn_find_track', lang), callback_data=f"vid_shazam|{vid_key}"),
+                    InlineKeyboardButton(t('btn_trim_video', lang), callback_data=f"vid_trim|{vid_key}")
+                ]]))
         except: pass
         return
 
@@ -1370,10 +1330,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             dur_arg = f"-t {end_sec - start_sec}" if end_sec is not None else ""
             if fmt_v == 'audio':
                 out = tmpfile(f"trim_{uid}_{start_sec}_{end_sec or 'end'}.mp3")
-                cmd = f'ffmpeg -y -i "{vid_path}" -ss {start_sec} {dur_arg} -vn -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
+                cmd = f'/tmp/ffmpeg -y -i "{vid_path}" -ss {start_sec} {dur_arg} -vn -acodec libmp3lame -q:a 2 "{out}" -loglevel quiet'
             else:
                 out = tmpfile(f"trim_{uid}_{start_sec}_{end_sec or 'end'}.mp4")
-                cmd = f'ffmpeg -y -i "{vid_path}" -ss {start_sec} {dur_arg} -c:v libx264 -c:a aac -preset fast "{out}" -loglevel quiet'
+                cmd = f'/tmp/ffmpeg -y -i "{vid_path}" -ss {start_sec} {dur_arg} -c:v libx264 -c:a aac -preset fast "{out}" -loglevel quiet'
             ret = os.system(cmd)
             return out if ret == 0 and os.path.exists(out) else None
         out_path = await loop.run_in_executor(executor, _do_trim)
@@ -1386,8 +1346,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except: pass
             return
         s_str = fmt_dur(start_sec); e_str = fmt_dur(end_sec) if end_sec is not None else "end"
-        try:
-            await cb.edit_message_text(t('trim_done', lang, s=s_str, e=e_str), parse_mode="HTML")
+        try: await cb.edit_message_text(t('trim_done', lang, s=s_str, e=e_str), parse_mode="HTML")
         except: pass
         with open(out_path, 'rb') as f:
             if fmt_v == 'audio': await cb.message.reply_audio(f, title=f"Trim {s_str}-{e_str}")
@@ -1404,10 +1363,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "lib_new_folder":
         _user_state[uid] = {'action': 'create_folder'}
         try:
-            await cb.edit_message_text(
-                t('create_folder_prompt', lang), parse_mode="HTML",
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_back', lang), callback_data="lib_back")]])
-            )
+            await cb.edit_message_text(t('create_folder_prompt', lang), parse_mode="HTML",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_back', lang), callback_data="lib_back")]]))
         except: pass
         return
     if data.startswith("lib_folder|"):
@@ -1417,14 +1374,12 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, folder_key, idx_str = data.split("|")
         folder = get_stored(folder_key); idx = int(idx_str)
         folders = lib_get_user(uid); tracks = folders.get(folder, [])
-        if idx >= len(tracks):
-            await cb.answer("Not found", show_alert=True); return
+        if idx >= len(tracks): await cb.answer("Not found", show_alert=True); return
         track = tracks[idx]
         try:
             await cb.answer("📤")
             await cb.message.reply_audio(audio=track['file_id'], title=track['title'], performer=track.get('artist', ''))
-        except Exception as ex:
-            log.error(f"lib_play: {ex}"); await cb.answer("❌ Error", show_alert=True)
+        except Exception as ex: log.error(f"lib_play: {ex}"); await cb.answer("❌ Error", show_alert=True)
         return
     if data.startswith("lib_del_track|"):
         _, folder_key, idx_str = data.split("|")
@@ -1440,10 +1395,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         folders = lib_get_user(uid)
         if not folders:
             try:
-                await cb.edit_message_text(
-                    t('lib_empty', lang), parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📁 /library", callback_data="lib_back")]])
-                )
+                await cb.edit_message_text(t('lib_empty', lang), parse_mode="HTML",
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📁 /library", callback_data="lib_back")]]))
             except: pass
             return
         buttons = []
@@ -1451,8 +1404,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             fkey = store_url(fname)
             buttons.append([InlineKeyboardButton(f"📁 {fname} ({len(folders[fname])})", callback_data=f"lib_save_to|{fkey}|{track_key}")])
         buttons.append([InlineKeyboardButton(t('btn_back', lang), callback_data="lib_cancel_save")])
-        try:
-            await cb.edit_message_text(t('btn_save_lib', lang), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
+        try: await cb.edit_message_text(t('btn_save_lib', lang), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
         except: pass
         return
     if data == "lib_cancel_save":
@@ -1464,42 +1416,23 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         folder = get_stored(folder_key); track_meta_str = get_stored(track_key)
         state = _trim_state.get(uid, {}); file_id = state.get('file_id')
         if not file_id:
-            await cb.answer("❌ file_id not found. Redownload track.", show_alert=True); return
+            await cb.answer("❌ Перескачай трек.", show_alert=True); return
         try: track_meta = json.loads(track_meta_str)
         except: track_meta = {'title': 'Unknown', 'artist': '', 'duration': 0}
-        added = lib_add_track(uid, folder, {'title': track_meta.get('title', ''), 'artist': track_meta.get('artist', ''), 'duration': track_meta.get('duration', 0), 'file_id': file_id})
-        await cb.answer(f"✅ Saved to «{folder}»" if added else f"ℹ️ Already in «{folder}»")
+        added = lib_add_track(uid, folder, {'title': track_meta.get('title', ''), 'artist': track_meta.get('artist', ''),
+                                             'duration': track_meta.get('duration', 0), 'file_id': file_id})
+        await cb.answer(f"✅ Сохранено в «{folder}»" if added else f"ℹ️ Уже есть в «{folder}»")
         try: await cb.delete_message()
         except: pass
         return
 
-    # ── Похожие / исполнитель ─────────────────────────────────────────────────
+    # ── Старый флоу audio|/video| (TikTok, Pinterest, библиотека похожих) ────
     if '|' not in data: return
     action, key = data.split('|', 1)
     value = get_stored(key)
 
-    if action in ('similar', 'artist'):
-        search_q = value if action == 'similar' else f"{value} best songs"
-        try: await cb.edit_message_text("🔍 ...", parse_mode="HTML")
-        except: pass
-        tracks = await loop.run_in_executor(executor, _search_similar, search_q)
-        if not tracks:
-            try: await cb.edit_message_text(t('not_found', lang), parse_mode="HTML")
-            except: pass
-            return
-        buttons = []; lines = []
-        for i, tr in enumerate(tracks, 1):
-            lines.append(f"{i}. <b>{tr['title']}</b> — {tr['uploader']} ⏱{fmt_dur(tr['duration'])}")
-            buttons.append([InlineKeyboardButton(f"⬇️ {i}. {tr['title'][:30]}", callback_data=f"audio|{store_url(tr['url'])}")])
-        header = t('btn_similar', lang) if action == 'similar' else t('btn_artist', lang)
-        try:
-            await cb.edit_message_text(f"<b>{header}:</b>\n━━━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        except Exception as ex: log.warning(f"similar: {ex}")
-        return
-
-    # ── Скачать аудио / видео ─────────────────────────────────────────────────
     emoji = '🎵' if 'audio' in action else '🎬'
-    try: await cb.edit_message_text(f"{emoji} ...", parse_mode="HTML")
+    try: await cb.edit_message_text(f"{emoji} <b>Загружаю...</b>", parse_mode="HTML")
     except: pass
     try:
         if action == 'video':
@@ -1516,33 +1449,25 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     try:
         title = result['title']; uploader = result['uploader']
-        try:
-            await cb.edit_message_text(
-                t('found', lang, title=title, uploader=uploader, dur=fmt_dur(result['duration']), src=src_emoji(result['source'])),
-                parse_mode="HTML"
-            )
-        except: pass
         if result['type'] == 'audio':
-            similar_key = store_url(f"{uploader} {title}"); artist_key = store_url(uploader)
             save_key = store_url(json.dumps({'title': title, 'artist': uploader, 'duration': result['duration']}, ensure_ascii=False))
-            kb = InlineKeyboardMarkup([
-                [InlineKeyboardButton(t('btn_similar', lang), callback_data=f"similar|{similar_key}"), InlineKeyboardButton(t('btn_artist', lang), callback_data=f"artist|{artist_key}")],
-                [InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")],
-            ])
-            sent = None
+            kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")]])
+            from telegram import InputFile
             with open(result['file'], 'rb') as f:
-                sent = await cb.message.reply_audio(f, title=title, performer=uploader)
+                sent = await cb.message.reply_audio(InputFile(f, filename='audio.mp3'),
+                                                    title=title, performer=uploader,
+                                                    caption=f"<b>{title}</b>\n{uploader}",
+                                                    parse_mode="HTML", reply_markup=kb)
             if sent and sent.audio:
-                _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader, 'file_id': sent.audio.file_id, 'duration': result['duration']}
+                _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
+                                    'file_id': sent.audio.file_id, 'duration': result['duration']}
             try: os.remove(result['file'])
             except: pass
-            await cb.message.reply_text(f"🎵 <b>{title}</b>", parse_mode="HTML", reply_markup=kb)
         else:
             with open(result['file'], 'rb') as f:
-                await cb.message.reply_video(f, caption=f"🎬 <b>{title}</b>", parse_mode="HTML")
+                await cb.message.reply_video(f, caption=f"<b>{title}</b>", parse_mode="HTML")
             try: os.remove(result['file'])
             except: pass
-        save_cache(cache_key(value), result)
         try: await cb.delete_message()
         except: pass
     except Exception as ex:
@@ -1563,40 +1488,22 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_user_lang(uid)
     caption = (update.message.caption or '').strip().lower()
 
-    # Если написали "найти" — ищем фильм/сериал через TMDB
     if 'найти' in caption or 'find' in caption:
         msg = await safe_reply(update, "🔍 <b>Ищу в базе фильмов...</b>", parse_mode="HTML")
-        if not TMDB_TOKEN:
-            await safe_edit(msg,
-                "⚠️ <b>TMDB не настроен</b>\n\n"
-                "Чтобы искать фильмы и сериалы по фото/видео:\n"
-                "1. Зарегистрируйся на <b>themoviedb.org</b>\n"
-                "2. Настройки → API → Request API Key\n"
-                "3. Скопируй <b>API Read Access Token</b>\n"
-                "4. Вставь в <code>TMDB_TOKEN = \"...\"</code> в боте",
-                parse_mode="HTML")
-            return
-        # Получаем название из подписи или имени файла
         query = re.sub(r'найти|find', '', caption, flags=re.IGNORECASE).strip()
         if not query:
             fn = getattr(video, 'file_name', '') or ''
             query = os.path.splitext(fn)[0].replace('_', ' ').replace('-', ' ').strip()
         if not query:
-            await safe_edit(msg,
-                "😔 Не могу определить название.\n\nПришли фото/видео с подписью:\n"
-                "<code>найти Inception</code>", parse_mode="HTML")
-            return
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(executor, _search_media_tmdb, query)
+            await safe_edit(msg, "😔 Напиши название: <code>найти Inception</code>", parse_mode="HTML"); return
+        result = await asyncio.get_event_loop().run_in_executor(executor, _search_media_tmdb, query)
         try: await msg.delete()
         except: pass
         if not result:
-            await update.message.reply_text("😔 Ничего не найдено. Попробуй уточнить название.", parse_mode="HTML")
-            return
+            await update.message.reply_text("😔 Ничего не найдено.", parse_mode="HTML"); return
         await _send_tmdb_result(update.message, result)
         return
 
-    # Стандартная обработка — меню видео
     msg = await safe_reply(update, "⏳ <b>Получаю файл...</b>", parse_mode="HTML")
     if not msg: return
     vid_path = tmpfile(f"video_{uid}_{update.message.message_id}.mp4")
@@ -1614,115 +1521,74 @@ async def handle_video_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]])
     await safe_edit(msg, t('video_received', lang, dur=fmt_dur(vid_dur)), parse_mode="HTML", reply_markup=kb)
 
-# ── Обработчик фото ───────────────────────────────────────────────────────────
+# ── Фото ──────────────────────────────────────────────────────────────────────
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Фото + 'найти' → ищем фильм/сериал через TMDB."""
     uid = update.effective_user.id
     caption = (update.message.caption or '').strip().lower()
-    if 'найти' not in caption and 'find' not in caption:
-        return  # без подписи — игнорируем
-
+    if 'найти' not in caption and 'find' not in caption: return
     msg = await safe_reply(update, "🔍 <b>Ищу в базе фильмов...</b>", parse_mode="HTML")
-    if not TMDB_TOKEN:
-        await safe_edit(msg,
-            "⚠️ <b>TMDB не настроен</b>\n\n"
-            "Чтобы искать фильмы и сериалы по фото:\n"
-            "1. Зарегистрируйся на <b>themoviedb.org</b>\n"
-            "2. Настройки → API → Request API Key\n"
-            "3. Скопируй <b>API Read Access Token</b>\n"
-            "4. Вставь в <code>TMDB_TOKEN = \"...\"</code> в боте",
-            parse_mode="HTML")
-        return
-
     query = re.sub(r'найти|find', '', caption, flags=re.IGNORECASE).strip()
     if not query:
-        await safe_edit(msg,
-            "😔 Напиши название рядом с фото.\n\nПример:\n"
-            "<i>(прикрепи постер)</i> + подпись <code>найти Inception</code>",
-            parse_mode="HTML")
-        return
-
-    loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(executor, _search_media_tmdb, query)
+        await safe_edit(msg, "😔 Напиши название рядом с фото: <code>найти Inception</code>", parse_mode="HTML"); return
+    result = await asyncio.get_event_loop().run_in_executor(executor, _search_media_tmdb, query)
     try: await msg.delete()
     except: pass
     if not result:
-        await update.message.reply_text("😔 Ничего не найдено. Уточни название.", parse_mode="HTML")
-        return
+        await update.message.reply_text("😔 Ничего не найдено.", parse_mode="HTML"); return
     await _send_tmdb_result(update.message, result)
 
-# ── Обработчик MP3 файла ──────────────────────────────────────────────────────
+# ── MP3 файл ──────────────────────────────────────────────────────────────────
 async def handle_audio_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """MP3 файл + 'обрежь' → спрашиваем время и режем."""
     uid = update.effective_user.id
     audio = update.message.audio or update.message.document
     if not audio: return
-
-    # Проверяем что это аудио файл
     mime = getattr(audio, 'mime_type', '') or ''
     fname = getattr(audio, 'file_name', '') or ''
-    if not (mime.startswith('audio/') or fname.lower().endswith('.mp3')):
-        return
-
+    if not (mime.startswith('audio/') or fname.lower().endswith('.mp3')): return
     caption = (update.message.caption or '').strip().lower()
-    has_trim = any(w in caption for w in ['обрежь', 'обрезать', 'trim', 'cut', 'обрезай'])
-
-    if not has_trim:
-        return  # без слова "обрежь" — игнорируем
-
+    if not any(w in caption for w in ['обрежь', 'обрезать', 'trim', 'cut', 'обрезай']): return
     if audio.file_size and audio.file_size > 50 * 1024 * 1024:
-        await update.message.reply_text("⚠️ Файл больше 50MB.")
-        return
-
+        await update.message.reply_text("⚠️ Файл больше 50MB."); return
     msg = await safe_reply(update, "⏳ <b>Скачиваю аудио...</b>", parse_mode="HTML")
     if not msg: return
-
     audio_path = tmpfile(f"mp3_{uid}_{update.message.message_id}.mp3")
     try:
         file = await context.bot.get_file(audio.file_id)
         await file.download_to_drive(audio_path)
     except Exception as ex:
-        await safe_edit(msg, f"⚠️ Не удалось скачать: {ex}", parse_mode="HTML")
-        return
-
-    # Получаем длительность через ffprobe
+        await safe_edit(msg, f"⚠️ {ex}", parse_mode="HTML"); return
     import subprocess
     dur_sec = 0
     try:
-        r = subprocess.run(
-            ['ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', audio_path],
-            capture_output=True, text=True, timeout=10
-        )
+        r = subprocess.run(['/tmp/ffprobe', '-v', 'quiet', '-print_format', 'json', '-show_format', audio_path],
+                           capture_output=True, text=True, timeout=10)
         dur_sec = float(json.loads(r.stdout).get('format', {}).get('duration', 0))
     except: pass
-
     title = getattr(audio, 'title', '') or os.path.splitext(fname)[0] or 'track'
     performer = getattr(audio, 'performer', '') or ''
-
-    # Сохраняем файл для обрезки
-    _trim_state[uid] = {
-        'file': audio_path,
-        'title': title,
-        'uploader': performer,
-        'file_id': audio.file_id,
-        'duration': int(dur_sec),
-    }
+    _trim_state[uid] = {'file': audio_path, 'title': title, 'uploader': performer,
+                        'file_id': audio.file_id, 'duration': int(dur_sec)}
     _user_state[uid] = {'action': 'mp3_trim_input', 'audio_path': audio_path, 'dur': int(dur_sec)}
-
     dur_str = fmt_dur(int(dur_sec)) if dur_sec else "?"
-    await safe_edit(
-        msg,
-        f"🎵 <b>{title}</b>  ⏱ {dur_str}\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"✂️ Напиши какую часть оставить:\n\n"
+    await safe_edit(msg,
+        f"🎵 <b>{title}</b>  ⏱ {dur_str}\n\n"
+        f"✂️ Напиши какую часть оставить:\n"
         f"  <code>0:30 1:00</code> — с 30 сек до 1 мин\n"
-        f"  <code>0:30 конец</code> — с 30 сек до конца\n"
-        f"  <code>0 0:45</code> — первые 45 сек",
-        parse_mode="HTML"
-    )
+        f"  <code>0:30 конец</code> — с 30 сек до конца",
+        parse_mode="HTML")
 
 # ── Запуск ────────────────────────────────────────────────────────────────────
-app = ApplicationBuilder().token(TOKEN).build()
+async def post_init(application):
+    await application.bot.delete_webhook(drop_pending_updates=True)
+    await application.bot.set_my_commands([
+        ('start', 'Главное меню'),
+        ('help', 'Помощь'),
+        ('lang', 'Язык'),
+        ('library', 'Библиотека'),
+    ])
+
+app = (ApplicationBuilder().token(TOKEN).post_init(post_init)
+       .connect_timeout(30).read_timeout(60).write_timeout(120).build())
 app.add_handler(CommandHandler("start", cmd_start))
 app.add_handler(CommandHandler("help", cmd_help))
 app.add_handler(CommandHandler("lang", cmd_lang))
@@ -1733,5 +1599,4 @@ app.add_handler(MessageHandler(filters.AUDIO | (filters.Document.AUDIO | filters
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 app.add_handler(MessageHandler((filters.VIDEO | filters.Document.VIDEO) & ~filters.ANIMATION, handle_video_file))
 log.info("Бот запущен ✅")
-if not os.path.exists('cookies.txt'): log.warning("cookies.txt не найден.")
 app.run_polling(drop_pending_updates=True)
