@@ -543,6 +543,7 @@ try:
     _shutil.copy2(_ffmpeg_bin, '/tmp/ffmpeg'); os.chmod('/tmp/ffmpeg', 0o755)
     _shutil.copy2(_ffmpeg_bin, '/tmp/ffprobe'); os.chmod('/tmp/ffprobe', 0o755)
     BASE_OPTS['ffmpeg_location'] = '/tmp'
+    BASE_OPTS['ffprobe_location'] = '/tmp/ffprobe'
     os.environ['PATH'] = '/tmp:' + os.environ.get('PATH', '')
     log.info(f"ffmpeg ready at /tmp, ffprobe exists: {os.path.exists('/tmp/ffprobe')}")
     log.info(f"ffmpeg найден: {_ffmpeg_bin}")
