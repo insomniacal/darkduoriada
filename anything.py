@@ -633,19 +633,19 @@ def _download_audio(query_or_url):
 
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+        sources = [f"scsearch:{sq}", f"dzsearch:{sq}"] if sq else []
     elif is_url(query_or_url):
         sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
         q_clean = clean_search_query(q)
-        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
+        sources = [f"scsearch:{q}", f"dzsearch:{q}"]
         if q_clean != q and len(q_clean) > 2:
-            sources += [f"scsearch:{q_clean}", f"ytsearch:{q_clean}"]
+            sources += [f"scsearch:{q_clean}", f"dzsearch:{q_clean}"]
         log.info(f"_download_audio clean query: '{q}' → '{q_clean}'")
 
     for source in sources:
-        is_sc = source.startswith('scsearch:')
+        is_sc = source.startswith('scsearch:') or source.startswith('dzsearch:')
         opts = {
             **BASE_OPTS,
             **(cookie_opts if not is_sc else {}),
@@ -718,17 +718,17 @@ def _search_track_meta(query_or_url):
     cookie_opts = get_cookie_opts()
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"ytsearch:{sq}"] if sq else []
+        sources = [f"scsearch:{sq}", f"dzsearch:{sq}"] if sq else []
     elif is_url(query_or_url):
         sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
         q_clean = clean_search_query(q)
-        sources = [f"scsearch:{q}", f"ytsearch:{q}"]
+        sources = [f"scsearch:{q}", f"dzsearch:{q}"]
         if q_clean != q and len(q_clean) > 2:
-            sources += [f"scsearch:{q_clean}", f"ytsearch:{q_clean}"]
+            sources += [f"scsearch:{q_clean}", f"dzsearch:{q_clean}"]
     for source in sources:
-        is_sc = source.startswith('scsearch:')
+        is_sc = source.startswith('scsearch:') or source.startswith('dzsearch:')
         opts = {**BASE_OPTS, **(cookie_opts if not is_sc else {}), 'skip_download': True, 'quiet': True}
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -775,7 +775,7 @@ def _search_tracks_list(query, max_results=5):
     results = []
     q = clean_q(query)
     q_clean = clean_search_query(q)
-    for source in [f"ytsearch{max_results}:{q}", f"scsearch{max_results}:{q_clean}"]:
+    for source in [f"scsearch{max_results}:{q}", f"dzsearch{max_results}:{q_clean}"]:
         try:
             opts = {**BASE_OPTS, 'skip_download': True, 'extract_flat': True, 'quiet': True}
             with yt_dlp.YoutubeDL(opts) as ydl:
