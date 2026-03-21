@@ -1416,18 +1416,14 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         track_key = data.split("|", 1)[1]
         folders = lib_get_user(uid)
         if not folders:
-            try:
-                await cb.edit_message_text(t('lib_empty', lang), parse_mode="HTML",
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📁 /library", callback_data="lib_back")]]))
-            except: pass
+            await cb.answer("❌ Сначала создай папку в /library", show_alert=True)
             return
         buttons = []
         for fname in folders:
             fkey = store_url(fname)
             buttons.append([InlineKeyboardButton(f"📁 {fname} ({len(folders[fname])})", callback_data=f"lib_save_to|{fkey}|{track_key}")])
-        buttons.append([InlineKeyboardButton(t('btn_back', lang), callback_data="lib_cancel_save")])
-        try: await cb.edit_message_text(t('btn_save_lib', lang), parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
-        except: pass
+        buttons.append([InlineKeyboardButton("❌ Отмена", callback_data="lib_cancel_save")])
+        await cb.message.reply_text("📁 Выбери папку:", reply_markup=InlineKeyboardMarkup(buttons))
         return
     if data == "lib_cancel_save":
         try: await cb.delete_message()
