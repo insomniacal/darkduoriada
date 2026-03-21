@@ -638,19 +638,19 @@ def _download_audio(query_or_url):
 
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"dzsearch:{sq}"] if sq else []
+        sources = [f"scsearch:{sq}"]  if sq else []
     elif is_url(query_or_url):
         sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
         q_clean = clean_search_query(q)
-        sources = [f"scsearch:{q}", f"dzsearch:{q}"]
+        sources = [f"scsearch:{q}"]
         if q_clean != q and len(q_clean) > 2:
-            sources += [f"scsearch:{q_clean}", f"dzsearch:{q_clean}"]
+            sources += [f"scsearch:{q_clean}"]
         log.info(f"_download_audio clean query: '{q}' → '{q_clean}'")
 
     for source in sources:
-        is_sc = source.startswith('scsearch:') or source.startswith('dzsearch:')
+        is_sc = source.startswith('scsearch:')
         opts = {
             **BASE_OPTS,
             **(cookie_opts if not is_sc else {}),
@@ -731,17 +731,17 @@ def _search_track_meta(query_or_url):
     cookie_opts = get_cookie_opts()
     if is_spotify(query_or_url):
         sq = _get_spotify_query(query_or_url)
-        sources = [f"scsearch:{sq}", f"dzsearch:{sq}"] if sq else []
+        sources = [f"scsearch:{sq}"]  if sq else []
     elif is_url(query_or_url):
         sources = [query_or_url]
     else:
         q = clean_q(query_or_url)
         q_clean = clean_search_query(q)
-        sources = [f"scsearch:{q}", f"dzsearch:{q}"]
+        sources = [f"scsearch:{q}"]
         if q_clean != q and len(q_clean) > 2:
-            sources += [f"scsearch:{q_clean}", f"dzsearch:{q_clean}"]
+            sources += [f"scsearch:{q_clean}"]
     for source in sources:
-        is_sc = source.startswith('scsearch:') or source.startswith('dzsearch:')
+        is_sc = source.startswith('scsearch:')
         opts = {**BASE_OPTS, **(cookie_opts if not is_sc else {}), 'skip_download': True, 'quiet': True}
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -788,7 +788,7 @@ def _search_tracks_list(query, max_results=5):
     results = []
     q = clean_q(query)
     q_clean = clean_search_query(q)
-    for source in [f"scsearch{max_results}:{q}", f"dzsearch{max_results}:{q_clean}"]:
+    for source in [f"scsearch{max_results}:{q}", f"scsearch{max_results}:{q_clean}"]:
         try:
             opts = {**BASE_OPTS, 'skip_download': True, 'extract_flat': True, 'quiet': True}
             with yt_dlp.YoutubeDL(opts) as ydl:
@@ -1107,7 +1107,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url_match = is_url(text)
     search_kw = t('search_keyword', lang)
     search_match = lower.startswith(search_kw)
-    if not url_match and not search_match: return
+    # В личке любой текст = поиск, в группах только по ключевому слову
+    is_private = update.message.chat.type == 'private'
+    if not url_match and not search_match and not is_private: return
+    if not url_match and not search_match and is_private:
+        # В личке — весь текст это поисковый запрос
+        search_match = True
 
     # ── TikTok ────────────────────────────────────────────────────────────────
     if url_match and is_tiktok(text):
@@ -1154,7 +1159,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Поиск / ссылка ────────────────────────────────────────────────────────
-    query = text if url_match else text[len(search_kw):].strip()
+    if url_match:
+        query = text
+    elif lower.startswith(search_kw):
+        query = text[len(search_kw):].strip()
+    else:
+        query = text  # личка без ключевого слова
 
     # Для текстового поиска — показываем список 5 вариантов
     if search_match and not url_match:
