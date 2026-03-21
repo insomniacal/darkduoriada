@@ -1231,20 +1231,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title = meta_title or result['title']
         uploader = meta_uploader or result['uploader']
         duration = meta_duration or result['duration']
-        save_key = store_url(json.dumps({'title': title, 'artist': uploader, 'duration': duration}, ensure_ascii=False))
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")]])
         try: await cb.edit_message_text("📤 <b>Отправляю...</b>", parse_mode="HTML")
         except: pass
         try:
             from telegram import InputFile
+            # Сначала отправляем без кнопки
             with open(result['file'], 'rb') as f:
                 sent = await cb.message.reply_audio(InputFile(f, filename='audio.mp3'),
                                                     title=title, performer=uploader,
                                                     caption=f"<b>{title}</b>\n{uploader}",
-                                                    parse_mode="HTML", reply_markup=kb)
+                                                    parse_mode="HTML")
             if sent and sent.audio:
+                file_id = sent.audio.file_id
                 _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
-                                    'file_id': sent.audio.file_id, 'duration': duration}
+                                    'file_id': file_id, 'duration': duration}
+                # Теперь знаем file_id — добавляем кнопку сохранения
+                save_key = store_url(json.dumps({'title': title, 'artist': uploader,
+                                                  'duration': duration, 'file_id': file_id}, ensure_ascii=False))
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")]])
+                try: await sent.edit_reply_markup(reply_markup=kb)
+                except: pass
             try: await cb.message.delete()
             except: pass
         except Exception as ex:
@@ -1430,16 +1436,20 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except: pass
         return
     if data.startswith("lib_save_to|"):
-        _, folder_key, track_key = data.split("|")
+        _, folder_key, track_key = data.split("|", 2)
         folder = get_stored(folder_key); track_meta_str = get_stored(track_key)
-        state = _trim_state.get(uid, {}); file_id = state.get('file_id')
+        try: track_meta = json.loads(track_meta_str)
+        except: track_meta = {}
+        file_id = track_meta.get('file_id') or _trim_state.get(uid, {}).get('file_id')
         if not file_id:
             await cb.answer("❌ Перескачай трек.", show_alert=True); return
-        try: track_meta = json.loads(track_meta_str)
-        except: track_meta = {'title': 'Unknown', 'artist': '', 'duration': 0}
-        added = lib_add_track(uid, folder, {'title': track_meta.get('title', ''), 'artist': track_meta.get('artist', ''),
-                                             'duration': track_meta.get('duration', 0), 'file_id': file_id})
-        await cb.answer(f"✅ Сохранено в «{folder}»" if added else f"ℹ️ Уже есть в «{folder}»")
+        added = lib_add_track(uid, folder, {
+            'title': track_meta.get('title', ''),
+            'artist': track_meta.get('artist', ''),
+            'duration': track_meta.get('duration', 0),
+            'file_id': file_id
+        })
+        await cb.answer(f"✅ Сохранено в «{folder}»" if added else f"ℹ️ Уже есть в «{folder}»", show_alert=True)
         try: await cb.delete_message()
         except: pass
         return
@@ -1468,17 +1478,21 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         title = result['title']; uploader = result['uploader']
         if result['type'] == 'audio':
-            save_key = store_url(json.dumps({'title': title, 'artist': uploader, 'duration': result['duration']}, ensure_ascii=False))
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")]])
             from telegram import InputFile
             with open(result['file'], 'rb') as f:
                 sent = await cb.message.reply_audio(InputFile(f, filename='audio.mp3'),
                                                     title=title, performer=uploader,
                                                     caption=f"<b>{title}</b>\n{uploader}",
-                                                    parse_mode="HTML", reply_markup=kb)
+                                                    parse_mode="HTML")
             if sent and sent.audio:
+                file_id = sent.audio.file_id
                 _trim_state[uid] = {'file': result['file'], 'title': title, 'uploader': uploader,
-                                    'file_id': sent.audio.file_id, 'duration': result['duration']}
+                                    'file_id': file_id, 'duration': result['duration']}
+                save_key = store_url(json.dumps({'title': title, 'artist': uploader,
+                                                  'duration': result['duration'], 'file_id': file_id}, ensure_ascii=False))
+                kb = InlineKeyboardMarkup([[InlineKeyboardButton(t('btn_save_lib', lang), callback_data=f"lib_save|{save_key}")]])
+                try: await sent.edit_reply_markup(reply_markup=kb)
+                except: pass
             try: os.remove(result['file'])
             except: pass
         else:
