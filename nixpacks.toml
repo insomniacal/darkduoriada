@@ -1,6 +1,8 @@
-cp ~/Downloads/bot.py ~/darkduoriada/anything.py
-cp ~/Downloads/nixpacks.toml ~/darkduoriada/nixpacks.toml
-cd ~/darkduoriada
-git add anything.py nixpacks.toml
-git commit -m "fix ffmpeg symlink + nixpacks"
-git push
+[phases.setup]
+nixPkgs = ["python3", "ffmpeg"]
+
+[phases.install]
+cmds = ["pip install --upgrade yt-dlp", "pip install -r requirements.txt"]
+
+[start]
+cmd = "python3 anything.py"
