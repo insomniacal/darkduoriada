@@ -24,11 +24,13 @@ _trim_state: dict = {}
 _user_state: dict = {}
 
 URL_PATTERN = re.compile(
-    r'https?://(www\.|vm\.|vt\.)?'
+    r'https?://(www\.|vm\.|vt\.|api\.)?'
     r'(youtube\.com|youtu\.be|tiktok\.com|pinterest\.com'
     r'|pin\.it|soundcloud\.com|open\.spotify\.com)',
     re.IGNORECASE
 )
+
+def is_url(tx): return bool(URL_PATTERN.search(tx)) or tx.startswith('https://') or tx.startswith('http://')
 
 # ── Переводы ──────────────────────────────────────────────────────────────────
 LANGS = {
@@ -450,7 +452,6 @@ def lib_delete_track(uid: int, folder: str, idx: int):
         con.close()
 
 # ── Утилиты ───────────────────────────────────────────────────────────────────
-def is_url(tx): return bool(URL_PATTERN.search(tx))
 def is_pinterest(tx): return 'pinterest.com' in tx or 'pin.it' in tx
 def is_tiktok(tx): return 'tiktok.com' in tx
 def is_spotify(tx): return 'spotify.com' in tx
@@ -617,13 +618,17 @@ def _shazam_identify_tiktok(tiktok_url):
     return None
 
 def _clean_title(title, filename, query):
-    """Чистим title если это имя файла SC (подчёркивания, хэш)."""
-    if not title or re.search(r'_\d{6,}', title) or title.endswith('.mp3'):
-        raw = re.sub(r'\.(mp3|mp4|wav|ogg|flac|m4a)$', '', filename or title or query, flags=re.IGNORECASE)
+    """Чистим title если это имя файла SC (подчёркивания, хэш) или URL."""
+    # Если title это URL или мусор — берём из имени файла
+    if not title or title.startswith('http') or re.search(r'_\d{6,}', title) or title.endswith('.mp3'):
+        raw = re.sub(r'\.(mp3|mp4|wav|ogg|flac|m4a)$', '', filename or '', flags=re.IGNORECASE)
         raw = re.sub(r'_\d{6,}$', '', raw)
         raw = raw.replace('_', ' ').strip()
         if len(raw) > 2: return raw
-    return title or query
+        # Если и filename мусор — используем query но только если это не URL
+        if query and not query.startswith('http'):
+            return clean_search_query(clean_q(query))
+    return title or ''
 
 def _download_audio(query_or_url):
     import glob, shutil, uuid
@@ -790,7 +795,11 @@ def _search_tracks_list(query, max_results=5):
                 info = ydl.extract_info(source, download=False)
                 for e in (info.get('entries', []) if info else []):
                     if not e: continue
-                    title = e.get('title', ''); url = e.get('url') or e.get('webpage_url', '')
+                    title = e.get('title', '')
+                    url = e.get('webpage_url') or e.get('url', '')
+                    # Убираем api.soundcloud.com — берём только нормальные URL
+                    if 'api.soundcloud.com' in url:
+                        url = e.get('webpage_url', '') or url
                     if title and url and len(results) < max_results:
                         results.append({'title': title, 'url': url,
                                         'duration': e.get('duration', 0) or 0,
