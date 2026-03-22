@@ -63,19 +63,25 @@ T = {
         'ru': (
             "🎵 <b>С возвращением, {name}!</b>\n\n"
             "🔗 Ссылка — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
-            "🔍 Поиск: <code>найти The Weeknd Blinding Lights</code>\n"
+            "🔍 Поиск музыки: <code>найти The Weeknd Blinding Lights</code>\n"
+            "🎬 Поиск фильма: <code>фильм Начало</code>\n"
+            "📺 Поиск сериала: <code>сериал Во все тяжкие</code>\n"
+            "🌸 Поиск аниме: <code>аниме Атака Титанов</code>\n"
             "✂️ Обрезка: <code>обрезать 0:30 0:45</code>\n"
             "📁 Библиотека — /library\n"
-            "🎬 Распознать трек — пришли видео до 20MB\n"
+            "🎵 Распознать трек — пришли видео до 20MB\n"
             "🌐 Язык — /lang"
         ),
         'en': (
             "🎵 <b>Welcome back, {name}!</b>\n\n"
             "🔗 Link — TikTok · Pinterest · YouTube · SoundCloud · Spotify\n"
-            "🔍 Search: <code>find The Weeknd Blinding Lights</code>\n"
+            "🔍 Music search: <code>find The Weeknd Blinding Lights</code>\n"
+            "🎬 Movie search: <code>movie Inception</code>\n"
+            "📺 Series search: <code>series Breaking Bad</code>\n"
+            "🌸 Anime search: <code>anime Attack on Titan</code>\n"
             "✂️ Trim: <code>trim 0:30 0:45</code>\n"
             "📁 Library — /library\n"
-            "🎬 Recognize track — send video up to 20MB\n"
+            "🎵 Recognize track — send video up to 20MB\n"
             "🌐 Language — /lang"
         ),
         'uz': (
@@ -881,17 +887,19 @@ def _trim_audio(src, start_sec, end_sec):
     return out if ret == 0 and os.path.exists(out) else None
 
 # ── TMDB поиск фильмов ────────────────────────────────────────────────────────
-def _search_media_tmdb(query):
+def _search_media_tmdb(query, media_type=None):
     if not TMDB_TOKEN: return None
     headers = {'Authorization': f'Bearer {TMDB_TOKEN}', 'accept': 'application/json'}
     results_all = []
-    for mt in ['movie', 'tv']:
+    # Если тип указан — ищем только по нему, иначе по обоим
+    types_to_search = [media_type] if media_type else ['movie', 'tv']
+    for mt in types_to_search:
         url = f'https://api.themoviedb.org/3/search/{mt}?query={urllib.parse.quote(query)}&language=ru-RU&page=1'
         try:
             req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=10) as resp:
                 data = json.loads(resp.read())
-                for item in data.get('results', [])[:3]:
+                for item in data.get('results', [])[:5]:
                     item['_mt'] = mt; results_all.append(item)
         except Exception as ex: log.warning(f"TMDB {mt}: {ex}")
     if not results_all: return None
@@ -996,23 +1004,32 @@ async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = get_user_lang(uid)
     help_texts = {
         'ru': ("📖 <b>Инструкция</b>\n\n"
-               "🔗 TikTok / Pinterest → Аудио или Видео\n"
-               "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-               "🔍 <code>найти [исполнитель трек]</code>\n\n"
-               "✂️ После скачивания:\n"
+               "🎵 <b>Музыка:</b>\n"
+               "• Ссылка TikTok / Pinterest / YouTube / SoundCloud / Spotify\n"
+               "• <code>найти The Weeknd Blinding Lights</code>\n\n"
+               "🎬 <b>Фильмы / Сериалы / Аниме:</b>\n"
+               "• <code>фильм Начало</code>\n"
+               "• <code>сериал Во все тяжкие</code>\n"
+               "• <code>аниме Атака Титанов</code>\n"
+               "• <code>кино Интерстеллар</code>\n\n"
+               "✂️ <b>Обрезка</b> (после скачивания):\n"
                "    <code>обрезать 0:30 0:45</code>\n\n"
-               "📁 /library — библиотека\n"
-               "🌐 /lang — язык\n\n"
-               "🎬 Пришли видео до 20MB → Shazam распознает"),
+               "🔍 <b>Распознать трек:</b> пришли видео до 20MB\n\n"
+               "📁 /library — личная библиотека\n"
+               "🌐 /lang — сменить язык"),
         'en': ("📖 <b>Help</b>\n\n"
-               "🔗 TikTok / Pinterest → Audio or Video\n"
-               "▶️ YouTube / SoundCloud / Spotify → mp3\n\n"
-               "🔍 <code>find [artist track]</code>\n\n"
-               "✂️ After downloading:\n"
+               "🎵 <b>Music:</b>\n"
+               "• Link TikTok / Pinterest / YouTube / SoundCloud / Spotify\n"
+               "• <code>find The Weeknd Blinding Lights</code>\n\n"
+               "🎬 <b>Movies / Series / Anime:</b>\n"
+               "• <code>movie Inception</code>\n"
+               "• <code>series Breaking Bad</code>\n"
+               "• <code>anime Attack on Titan</code>\n\n"
+               "✂️ <b>Trim</b> (after downloading):\n"
                "    <code>trim 0:30 0:45</code>\n\n"
-               "📁 /library — library\n"
-               "🌐 /lang — language\n\n"
-               "🎬 Send video up to 20MB → Shazam recognizes"),
+               "🔍 <b>Recognize track:</b> send video up to 20MB\n\n"
+               "📁 /library — personal library\n"
+               "🌐 /lang — change language"),
     }
     await update.message.reply_text(help_texts.get(lang, help_texts['ru']), parse_mode="HTML")
 
@@ -1158,13 +1175,19 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Поиск фильма/аниме/сериала по тексту ─────────────────────────────────
-    media_kw = {'фильм ', 'кино ', 'аниме ', 'сериал ', 'anime ', 'movie ', 'series '}
-    media_match = any(lower.startswith(kw) for kw in media_kw)
-    if media_match and not url_match:
-        media_query = re.sub(r'^(фильм|кино|аниме|сериал|anime|movie|series)\s+', '', lower, flags=re.IGNORECASE).strip() or text
+    media_kw = {'фильм ': 'movie', 'кино ': 'movie', 'аниме ': 'tv', 'сериал ': 'tv', 'anime ': 'tv', 'movie ': 'movie', 'series ': 'tv'}
+    media_type = None
+    media_match = False
+    for kw, mt in media_kw.items():
+        if lower.startswith(kw):
+            media_match = True
+            media_type = mt
+            media_query = text[len(kw):].strip()
+            break
+    if media_match and not url_match and media_query:
         msg = await safe_reply(update, "🔍 <b>Ищу в базе фильмов...</b>", parse_mode="HTML")
         if not msg: return
-        result = await loop.run_in_executor(executor, _search_media_tmdb, media_query)
+        result = await loop.run_in_executor(executor, _search_media_tmdb, media_query, media_type)
         try: await msg.delete()
         except: pass
         if not result:
