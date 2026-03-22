@@ -1143,19 +1143,29 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(msg, f"📱 <b>TikTok</b>{track_line}\n\n{t('choose_format', lang)}", parse_mode="HTML", reply_markup=kb)
         return
 
+    # ── Поиск фильма/аниме/сериала по тексту ─────────────────────────────────
+    media_kw = {'фильм ', 'кино ', 'аниме ', 'сериал ', 'anime ', 'movie ', 'series '}
+    media_match = any(lower.startswith(kw) for kw in media_kw)
+    if media_match and not url_match:
+        media_query = re.sub(r'^(фильм|кино|аниме|сериал|anime|movie|series)\s+', '', lower, flags=re.IGNORECASE).strip() or text
+        msg = await safe_reply(update, "🔍 <b>Ищу в базе фильмов...</b>", parse_mode="HTML")
+        if not msg: return
+        result = await loop.run_in_executor(executor, _search_media_tmdb, media_query)
+        try: await msg.delete()
+        except: pass
+        if not result:
+            await update.message.reply_text("😔 Ничего не найдено. Уточни название.", parse_mode="HTML"); return
+        await _send_tmdb_result(update.message, result)
+        return
+
     # ── Pinterest ─────────────────────────────────────────────────────────────
     if url_match and is_pinterest(text):
         msg = await safe_reply(update, t('processing', lang), parse_mode="HTML")
         if not msg: return
-        try: meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, text), timeout=30)
-        except: meta = None
-        vid_key = store_url(text); buttons = []; track_line = ""
-        if meta and meta.get('query'):
-            track_line = f"\n\n🎵 <b>{meta['artist']} — {meta['title']}</b>"
-            buttons.append(InlineKeyboardButton("⬇️ mp3", callback_data=f"audio|{store_url(meta['query'])}"))
-        buttons.append(InlineKeyboardButton("🎬 mp4", callback_data=f"video|{vid_key}"))
-        await safe_edit(msg, f"📌 <b>Pinterest</b>{track_line}\n\n{t('choose_format', lang)}",
-                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup([buttons]))
+        vid_key = store_url(text)
+        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Скачать видео", callback_data=f"video|{vid_key}")]])
+        await safe_edit(msg, f"📌 <b>Pinterest</b>\n\n{t('choose_format', lang)}",
+                        parse_mode="HTML", reply_markup=kb)
         return
 
     # ── Поиск / ссылка ────────────────────────────────────────────────────────
