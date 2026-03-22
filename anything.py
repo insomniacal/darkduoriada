@@ -1104,7 +1104,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # ── Музыка ────────────────────────────────────────────────────────────────
+    # Извлекаем чистый URL из текста (на случай если есть лишний текст вокруг)
     url_match = is_url(text)
+    if url_match:
+        clean_url = URL_PATTERN.search(text)
+        if clean_url:
+            text = text[clean_url.start():].split()[0]
+            url_match = True
     search_kw = t('search_keyword', lang)
     search_match = lower.startswith(search_kw)
     # В личке любой текст = поиск, в группах только по ключевому слову
