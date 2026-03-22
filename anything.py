@@ -1176,10 +1176,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if url_match and is_pinterest(text):
         msg = await safe_reply(update, t('processing', lang), parse_mode="HTML")
         if not msg: return
+        # Пробуем получить название через yt-dlp
+        try:
+            meta = await asyncio.wait_for(loop.run_in_executor(executor, _get_track_meta, text), timeout=15)
+        except: meta = None
         vid_key = store_url(text)
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🎬 Скачать видео", callback_data=f"video|{vid_key}")]])
-        await safe_edit(msg, f"📌 <b>Pinterest</b>\n\n{t('choose_format', lang)}",
-                        parse_mode="HTML", reply_markup=kb)
+        buttons = []
+        track_line = ""
+        if meta and meta.get('query'):
+            aud_key = store_url(meta['query'])
+            track_line = f"\n\n🎵 <b>{meta.get('artist','')} — {meta.get('title','')}</b>"
+            buttons.append(InlineKeyboardButton("🎵 Скачать музыку", callback_data=f"audio|{aud_key}"))
+        buttons.append(InlineKeyboardButton("🎬 Скачать видео", callback_data=f"video|{vid_key}"))
+        await safe_edit(msg, f"📌 <b>Pinterest</b>{track_line}\n\n{t('choose_format', lang)}",
+                        parse_mode="HTML", reply_markup=InlineKeyboardMarkup([buttons]))
         return
 
     # ── Поиск / ссылка ────────────────────────────────────────────────────────
