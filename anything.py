@@ -762,26 +762,32 @@ def _search_track_meta(query_or_url):
     return None
 
 def _download_video(url):
-    import uuid
+    import uuid, glob
     uid_str = uuid.uuid4().hex[:12]
     out = tmpfile(f'video_{uid_str}')
-    opts = {
-        **BASE_OPTS, **get_cookie_opts(),
-        'format': 'bestvideo[height<=720][filesize<90M]+bestaudio/best[height<=720]/best',
-        'outtmpl': f'{out}.%(ext)s', 'merge_output_format': 'mp4',
-    }
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            e = info['entries'][0] if 'entries' in info else info
-            for ext in ['mp4', 'mkv', 'webm', 'mov']:
-                path = f'{out}.{ext}'
-                if os.path.exists(path):
+    # Пробуем несколько форматов — Pinterest не поддерживает сложные селекторы
+    formats = [
+        'bestvideo[height<=720][filesize<90M]+bestaudio/best[height<=720]/best',
+        'best[height<=720]/best',
+        'best',
+    ]
+    for fmt in formats:
+        opts = {
+            **BASE_OPTS, **get_cookie_opts(),
+            'format': fmt,
+            'outtmpl': f'{out}.%(ext)s', 'merge_output_format': 'mp4',
+        }
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                e = info['entries'][0] if 'entries' in info else info
+                files = glob.glob(f'{out}.*')
+                if files:
                     return {'type': 'video', 'title': e.get('title', 'video'),
                             'duration': e.get('duration', 0) or 0, 'uploader': e.get('uploader', ''),
-                            'source': e.get('extractor', ''), 'file': path}
-    except Exception as ex:
-        log.warning(f"_download_video: {ex}")
+                            'source': e.get('extractor', ''), 'file': files[0]}
+        except Exception as ex:
+            log.warning(f"_download_video [{fmt}]: {ex}")
     return None
 
 def _search_tracks_list(query, max_results=5):
