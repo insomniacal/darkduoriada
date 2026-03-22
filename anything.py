@@ -765,8 +765,8 @@ def _download_video(url):
     import uuid, glob
     uid_str = uuid.uuid4().hex[:12]
     out = tmpfile(f'video_{uid_str}')
-    # Пробуем несколько форматов — Pinterest не поддерживает сложные селекторы
-    formats = [
+    is_pinterest = 'pinterest.com' in url or 'pin.it' in url
+    formats = ['best'] if is_pinterest else [
         'bestvideo[height<=720][filesize<90M]+bestaudio/best[height<=720]/best',
         'best[height<=720]/best',
         'best',
@@ -774,9 +774,10 @@ def _download_video(url):
     for fmt in formats:
         opts = {
             **BASE_OPTS, **get_cookie_opts(),
-            'format': fmt,
             'outtmpl': f'{out}.%(ext)s', 'merge_output_format': 'mp4',
         }
+        if not is_pinterest:
+            opts['format'] = fmt
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=True)
@@ -788,6 +789,7 @@ def _download_video(url):
                             'source': e.get('extractor', ''), 'file': files[0]}
         except Exception as ex:
             log.warning(f"_download_video [{fmt}]: {ex}")
+            if is_pinterest: break
     return None
 
 def _search_tracks_list(query, max_results=5):
