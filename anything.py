@@ -8,7 +8,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 import psycopg2
 
 # ── Настройки ─────────────────────────────────────────────────────────────────
-TOKEN = "8671339317:AAGKQJd0LXGVOh-aJfqo3PIGhn76agzPb5o"
+TOKEN = os.environ.get("TOKEN", "")
 DB_URL = "postgresql://postgres.yhxxgohuznubzaqebiyu:.rep.1417228@aws-1-eu-west-1.pooler.supabase.com:6543/postgres"
 TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiJjZDBlZjI5NGIyYTIwZDllMmFjZmM3ZGI3NTIwYjBjMCIsIm5iZiI6MTc3MzI5NzMxMy4wNDYwMDAyLCJzdWIiOiI2OWIyNWVhMWQ5YWVlY2JjYjA2ODVhZjIiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.a9yQrtM93kLHa7LUnQViWKgvmIO_B-J2UKHBH0AFGeA"
 
